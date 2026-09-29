@@ -12,7 +12,16 @@ from miku_motion.errors import MikuMotionError
 from miku_motion.pipeline import ConvertOptions, convert
 from miku_motion.vmd.parser import read_vmd
 from miku_motion.vmd.writer import write_vmd
-from tests.fixtures.builders import axis_angle, bone_key, ogg_vorbis, player_rig, vmd, write_json
+from tests.fixtures.builders import (
+    axis_angle,
+    bbmodel,
+    bone_key,
+    group,
+    ogg_vorbis,
+    player_rig,
+    vmd,
+    write_json,
+)
 
 GOLDEN = Path(__file__).resolve().parents[1] / "golden" / "arm_wave.animation.json"
 MAPPING = {
@@ -187,3 +196,76 @@ def test_cli_audio_option(inputs: tuple[Path, Path, Path], tmp_path: Path) -> No
     result = CliRunner().invoke(app, [*args, "--audio", str(audio), "--sound", "pack:song"])
     assert result.exit_code == 0, result.output
     assert "sound keyframe at 0 s: pack:song" in result.output
+
+
+# --- leg IK -------------------------------------------------------------------------------------
+
+LEG_MAPPING = {
+    "bones": {
+        "Root": {"from": ["全ての親", "センター", "グルーブ"], "translation": True},
+        "LeftLeg": {"from": ["腰", "下半身", {"bone": "腰", "weight": -1}, "左足"]},
+        "LeftShin": "左ひざ",
+    }
+}
+
+
+@pytest.fixture
+def squat(tmp_path: Path) -> tuple[Path, Path, Path]:
+    """The hips drop 3 units over one second while the leg IK goals stay put."""
+    motion = tmp_path / "squat.vmd"
+    motion.write_bytes(
+        write_vmd(
+            vmd(
+                bone_key("センター", 0),
+                bone_key("センター", 30, position=(0, -3, 0)),
+                bone_key("左足ＩＫ", 0),
+                bone_key("左足ＩＫ", 30),
+            )
+        )
+    )
+    rig = bbmodel(
+        group("Root", None),
+        group("LeftLeg", "Root", (-1.9, 12, 0)),
+        group("LeftShin", "LeftLeg", (-1.9, 6, 0)),
+    )
+    return (
+        motion,
+        write_json(tmp_path / "legs.bbmodel", rig),
+        write_json(tmp_path / "m.json", LEG_MAPPING),
+    )
+
+
+def test_ik_bends_the_knee_when_the_hips_drop(squat: tuple[Path, Path, Path]) -> None:
+    result = convert(*squat, ConvertOptions(fps=10))
+    bones = _clip(result.text)["bones"]
+    shin = bones["LeftShin"]["rotation"]
+    assert abs(shin["1.0"][0]) > 30  # clearly bent at the bottom of the squat
+    assert abs(shin["0.0"][0]) < 1  # nearly straight when standing (MMD's 0.5 deg minimum)
+    codes = {d.code.value for d in result.diagnostics.items}
+    assert "MM107" in codes  # IK solved
+    assert "MM102" not in codes  # ... so no "IK not solved" warning
+
+
+def test_no_ik_keeps_the_knee_straight(squat: tuple[Path, Path, Path]) -> None:
+    result = convert(*squat, ConvertOptions(fps=10, source_skeleton=None))
+    bones = _clip(result.text)["bones"]
+    assert "LeftShin" not in bones  # never leaves its rest pose
+    assert "MM102" in {d.code.value for d in result.diagnostics.warnings}
+
+
+def test_cli_ik_options(squat: tuple[Path, Path, Path], tmp_path: Path) -> None:
+    motion, model, mapping = squat
+    base = [
+        "convert",
+        str(motion),
+        "-t",
+        str(model),
+        "-m",
+        str(mapping),
+        "-o",
+        str(tmp_path / "o.json"),
+    ]
+    assert CliRunner().invoke(app, [*base, "--no-ik"]).exit_code == 0
+    result = CliRunner().invoke(app, [*base, "--source-skeleton", "nope"])
+    assert result.exit_code == 1
+    assert "unknown built-in skeleton" in result.output

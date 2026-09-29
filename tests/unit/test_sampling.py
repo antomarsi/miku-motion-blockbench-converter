@@ -169,7 +169,11 @@ def test_adapter_reports_unsupported_sections_and_ik() -> None:
     diagnostics = Diagnostics()
     motion = to_source_motion(source, diagnostics)
     assert {Code.UNSUPPORTED_MORPHS, Code.UNSUPPORTED_CAMERA} <= diagnostics.codes()
-    assert motion.ik_bones == {"左足ＩＫ", "custom_solver"}
+    assert motion.ik_bones == {"custom_solver"}  # the show/IK list is authoritative
+    heuristic = to_source_motion(
+        vmd(bone_key("左足ＩＫ", 0), bone_key("左足IK親", 0)), Diagnostics()
+    )
+    assert heuristic.ik_bones == {"左足ＩＫ", "左足IK親"}  # name-based fallback
 
 
 def test_track_animation_flags() -> None:

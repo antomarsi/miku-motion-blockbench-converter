@@ -55,8 +55,15 @@ def to_source_motion(vmd: VmdFile, diagnostics: Diagnostics) -> SourceMotion:
         name: _track(name, [frames[f] for f in sorted(frames)])
         for name, frames in sorted(by_bone.items())
     }
-    ik_bones = {state.name for key in vmd.show_ik_keys for state in key.ik}
-    ik_bones.update(name for name in tracks if is_ik_name(name))
+    # The show/IK section lists the model's real IK bones; names containing "IK" (IK
+    # parents, IK tips) are only a fallback for files without that section.
+    ik_bones = {canonical_bone_name(s.name) for key in vmd.show_ik_keys for s in key.ik}
+    ik_states: dict[str, list[tuple[int, bool]]] = defaultdict(list)
+    for show_key in sorted(vmd.show_ik_keys, key=lambda k: k.frame):
+        for state in show_key.ik:
+            ik_states[canonical_bone_name(state.name)].append((show_key.frame, state.enabled))
+    if not ik_bones:
+        ik_bones.update(name for name in tracks if is_ik_name(name))
 
     _report_unsupported(vmd, diagnostics)
     return SourceMotion(
@@ -66,6 +73,7 @@ def to_source_motion(vmd: VmdFile, diagnostics: Diagnostics) -> SourceMotion:
         tracks=tracks,
         ik_bones=frozenset(ik_bones),
         canonical_name=canonical_bone_name,
+        ik_states={name: tuple(states) for name, states in sorted(ik_states.items())},
     )
 
 

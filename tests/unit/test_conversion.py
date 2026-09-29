@@ -8,6 +8,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from miku_motion.animation.clip import LoopMode
+from miku_motion.animation.sampling import sample_times, sample_track
 from miku_motion.animation.skeleton import Skeleton
 from miku_motion.blockbench.bbmodel import parse_bbmodel
 from miku_motion.conversion.coordinates import MMD_TO_CANONICAL, BasisChange
@@ -64,8 +65,13 @@ def _run(
     motion = to_source_motion(vmd(*keys), Diagnostics())
     mapping = MappingFile.model_validate({"bones": bones, "units": {"translation_scale": scale}})
     resolved = resolve(mapping, skeleton, motion, Diagnostics())
+    times = sample_times(motion.duration, 30)
+    poses = {
+        name: sample_track(track, times * motion.frame_rate)
+        for name, track in motion.tracks.items()
+    }
     animation = retarget(
-        motion, resolved, skeleton, MMD_TO_CANONICAL, fps=30, name="t", loop=LoopMode.LOOP
+        poses, times, resolved, skeleton, MMD_TO_CANONICAL, name="t", loop=LoopMode.LOOP
     )
     return animation, skeleton
 

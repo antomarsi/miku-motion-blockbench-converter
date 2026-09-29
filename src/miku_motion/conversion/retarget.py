@@ -22,9 +22,8 @@ chain's offsets (``p1 + R1 p2 + R1 R2 p3 ...``).
 import numpy as np
 
 from miku_motion.animation.clip import Animation, BoneTrack, LoopMode
-from miku_motion.animation.sampling import PoseSamples, sample_times, sample_track
+from miku_motion.animation.sampling import PoseSamples
 from miku_motion.animation.skeleton import Skeleton
-from miku_motion.animation.source import SourceMotion
 from miku_motion.conversion.coordinates import BasisChange
 from miku_motion.geometry import quat
 from miku_motion.geometry.quat import FloatArray
@@ -48,22 +47,19 @@ def _chain(
 
 
 def retarget(
-    motion: SourceMotion,
+    poses: dict[str, PoseSamples],
+    times: FloatArray,
     mapping: ResolvedMapping,
     skeleton: Skeleton,
     basis: BasisChange,
     *,
-    fps: float,
     name: str,
     loop: LoopMode = LoopMode.ONCE,
 ) -> Animation:
-    times = sample_times(motion.duration, fps)
-    frames = times * motion.frame_rate
-    needed = {link.source for b in mapping.bindings for link in b.chain}
-    poses = {
-        source: sample_track(motion.tracks[source], frames)
-        for source in sorted(needed & motion.tracks.keys())
-    }
+    """Build the target animation from source poses sampled at ``times``.
+
+    Source bones missing from ``poses`` are treated as being at rest.
+    """
     corrections = {b.target: b.rest_correction for b in mapping.bindings}
 
     tracks: dict[str, BoneTrack] = {}

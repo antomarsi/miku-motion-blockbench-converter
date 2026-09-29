@@ -62,6 +62,7 @@ def resolve(
     diagnostics: Diagnostics,
     *,
     mapping_path: Path | None = None,
+    solved_ik: frozenset[str] = frozenset(),
 ) -> ResolvedMapping:
     entries = mapping.entries()
     unknown = [target for target in entries if target not in skeleton]
@@ -96,7 +97,7 @@ def resolve(
         )
 
     resolved = ResolvedMapping(tuple(bindings), mapping.units.translation_scale)
-    _report(mapping, resolved, skeleton, motion, diagnostics, mapping_path)
+    _report(mapping, resolved, skeleton, motion, diagnostics, mapping_path, solved_ik)
     return resolved
 
 
@@ -107,6 +108,7 @@ def _report(
     motion: SourceMotion,
     diagnostics: Diagnostics,
     mapping_path: Path | None,
+    solved_ik: frozenset[str],
 ) -> None:
     used = {link.source for b in resolved.bindings for link in b.chain}
     ignore = [motion.canonical_name(pattern) for pattern in mapping.ignore]
@@ -125,14 +127,15 @@ def _report(
 
     ik = sorted(
         name
-        for name in motion.ik_bones & motion.tracks.keys()
-        if motion.tracks[name].is_animated and not ignored(name)
+        for name in (motion.ik_bones & motion.tracks.keys()) - solved_ik
+        # IK matters even when its goal is static (it pins feet while the body moves).
+        if not ignored(name) and any(on for _, on in motion.ik_states.get(name, ((0, True),)))
     )
     if ik:
         diagnostics.warn(
             Code.IK_DRIVEN_BONES,
-            f"motion uses IK bones ({_names(ik)}); IK is not solved yet, so bones they drive "
-            "(usually legs and feet) only follow their own keyframes",
+            f"motion uses IK bones the source skeleton doesn't define ({_names(ik)}); bones "
+            "they drive only follow their own keyframes",
             tuple(ik),
         )
 

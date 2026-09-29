@@ -15,6 +15,7 @@ from miku_motion.animation.clip import LoopMode
 from miku_motion.diagnostics import Diagnostics, Severity
 from miku_motion.errors import MikuMotionError
 from miku_motion.pipeline import DEFAULT_FPS, ConvertOptions, convert
+from miku_motion.rig.schema import DEFAULT_SKELETON
 from miku_motion.vmd import synth
 from miku_motion.vmd.parser import read_vmd
 from miku_motion.vmd.summary import VmdSummary, summarize
@@ -126,10 +127,25 @@ def convert_command(
             "Can be used without --audio."
         ),
     ] = None,
+    source_skeleton: Annotated[
+        str,
+        typer.Option(
+            help="Skeleton of the motion's MMD model, used to solve IK: a built-in name or "
+            "a skeleton .json file."
+        ),
+    ] = DEFAULT_SKELETON,
+    ik: Annotated[bool, typer.Option(help="Solve IK (legs, toes) like MMD does.")] = True,
     strict: Annotated[bool, typer.Option(help="Fail when any warning is emitted.")] = False,
 ) -> None:
     """Convert a .vmd motion into a GeckoLib .animation.json for a Blockbench model."""
-    options = ConvertOptions(fps=fps, name=name, loop=loop, audio=audio, sound=sound)
+    options = ConvertOptions(
+        fps=fps,
+        name=name,
+        loop=loop,
+        audio=audio,
+        sound=sound,
+        source_skeleton=source_skeleton if ik else None,
+    )
     try:
         result = convert(motion, target, mapping, options)
     except MikuMotionError as error:

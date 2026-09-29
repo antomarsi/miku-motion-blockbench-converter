@@ -75,6 +75,8 @@ class SourceMotion:
     end_frame: int
     tracks: dict[str, SourceBoneTrack] = field(default_factory=dict)
     ik_bones: frozenset[str] = frozenset()  # bones whose motion reaches others only via IK
+    # IK on/off switches over time: bone -> ((frame, enabled), ...) sorted by frame.
+    ik_states: dict[str, tuple[tuple[int, bool], ...]] = field(default_factory=dict)
     # Maps a user-written bone name to the key used in `tracks` (formats may truncate names).
     canonical_name: Callable[[str], str] = _same_name
 

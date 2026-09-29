@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "name": "mmd-standard",
+  "description": "Leg IK of a standard MMD model (semi-standard bones: waist, waist cancel, per-leg IK parents), with approximate Tda-style proportions. Replace with the motion's own model skeleton for exact knee bends.",
+  "bones": [
+    { "name": "全ての親", "parent": null, "position": [0, 0, 0] },
+    { "name": "センター", "parent": "全ての親", "position": [0, 8.0, 0] },
+    { "name": "グルーブ", "parent": "センター", "position": [0, 8.2, 0] },
+    { "name": "腰", "parent": "グルーブ", "position": [0, 11.4, 0.3] },
+    { "name": "下半身", "parent": "腰", "position": [0, 11.9, 0.2] },
+
+    { "name": "腰キャンセル左", "parent": "下半身", "position": [0.9, 10.9, 0.2], "inherit": { "bone": "腰", "weight": -1 } },
+    { "name": "左足", "parent": "腰キャンセル左", "position": [0.9, 10.9, 0.2] },
+    { "name": "左ひざ", "parent": "左足", "position": [0.9, 6.0, -0.2] },
+    { "name": "左足首", "parent": "左ひざ", "position": [0.9, 1.2, 0.4] },
+    { "name": "左つま先", "parent": "左足首", "position": [0.9, 0.0, -1.3] },
+
+    { "name": "腰キャンセル右", "parent": "下半身", "position": [-0.9, 10.9, 0.2], "inherit": { "bone": "腰", "weight": -1 } },
+    { "name": "右足", "parent": "腰キャンセル右", "position": [-0.9, 10.9, 0.2] },
+    { "name": "右ひざ", "parent": "右足", "position": [-0.9, 6.0, -0.2] },
+    { "name": "右足首", "parent": "右ひざ", "position": [-0.9, 1.2, 0.4] },
+    { "name": "右つま先", "parent": "右足首", "position": [-0.9, 0.0, -1.3] },
+
+    { "name": "左足IK親", "parent": "全ての親", "position": [0.9, 0.0, 0.4] },
+    { "name": "左足ＩＫ", "parent": "左足IK親", "position": [0.9, 1.2, 0.4] },
+    { "name": "左つま先ＩＫ", "parent": "左足ＩＫ", "position": [0.9, 0.0, -1.3] },
+    { "name": "右足IK親", "parent": "全ての親", "position": [-0.9, 0.0, 0.4] },
+    { "name": "右足ＩＫ", "parent": "右足IK親", "position": [-0.9, 1.2, 0.4] },
+    { "name": "右つま先ＩＫ", "parent": "右足ＩＫ", "position": [-0.9, 0.0, -1.3] }
+  ],
+  "ik": [
+    {
+      "bone": "左足ＩＫ", "target": "左足首", "iterations": 40, "limit_angle_deg": 114.5916,
+      "links": [
+        { "bone": "左ひざ", "min_deg": [-180, 0, 0], "max_deg": [-0.5, 0, 0] },
+        { "bone": "左足" }
+      ]
+    },
+    {
+      "bone": "右足ＩＫ", "target": "右足首", "iterations": 40, "limit_angle_deg": 114.5916,
+      "links": [
+        { "bone": "右ひざ", "min_deg": [-180, 0, 0], "max_deg": [-0.5, 0, 0] },
+        { "bone": "右足" }
+      ]
+    },
+    {
+      "bone": "左つま先ＩＫ", "target": "左つま先", "iterations": 3, "limit_angle_deg": 229.1831,
+      "links": [{ "bone": "左足首" }]
+    },
+    {
+      "bone": "右つま先ＩＫ", "target": "右つま先", "iterations": 3, "limit_angle_deg": 229.1831,
+      "links": [{ "bone": "右足首" }]
+    }
+  ]
+}

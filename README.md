@@ -42,9 +42,17 @@ The **mapping file** describes how MMD bones drive your model's bones. The conve
 - The effect ID defaults to `<mod id>:<audio file name>`, using the GeckoLib mod ID stored in the `.bbmodel`. Override it with `--sound`.
 - The converter doesn't copy the audio anywhere. The consuming mod must register a sound with that ID and handle GeckoLib sound keyframes.
 
+### Leg IK
+
+Most dances move the legs through MMD's IK: the motion stores where the feet go, and MMD bends the knees to reach them. The converter solves this IK the way MMD does, so knees bend and feet stay planted.
+
+- Solving needs the dancing model's bone positions, which a `.vmd` doesn't contain. By default a built-in skeleton with standard MMD proportions is used (`--source-skeleton mmd-standard`).
+- If warning MM106 says feet miss their targets, the real model's legs differ from the template. Pass a skeleton `.json` with that model's proportions (format: [src/miku_motion/data/skeletons/mmd-standard.json](src/miku_motion/data/skeletons/mmd-standard.json)). Reading the model's `.pmx` directly is planned.
+- `--no-ik` turns solving off.
+
 ## Scope
 
-v0.1 covers skeletal motion only: bone rotation and translation with MMD interpolation curves, resampled at a fixed rate. Not yet supported: facial morphs, camera, lights, physics (hair and skirt), and IK solving. Legs driven by MMD's leg IK are approximated. Every dropped or approximated feature is reported as a warning.
+Supported: skeletal motion (bone rotation and translation with MMD interpolation curves, resampled at a fixed rate) and leg/toe IK. Not yet supported: facial morphs, camera, lights, and physics (hair, skirt, ties). Every dropped or approximated feature is reported as a warning.
 
 ## Development
 

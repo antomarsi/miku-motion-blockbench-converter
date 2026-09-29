@@ -48,6 +48,6 @@ Convert a full dance and scrub through it:
 
 - Timing: the animation length equals the motion's duration shown by `miku-motion inspect`.
 - The head, torso and arms follow the choreography.
-- Legs only follow FK keys (IK isn't solved yet, warning MM102), so knees won't bend properly.
+- Knees bend and feet stay planted (leg IK, info MM107). If feet slide or legs lock straight, check warning MM106: the source skeleton's leg proportions may not match the dancing model.
 
 Record any failure as an issue with the time in seconds and the bone name.
