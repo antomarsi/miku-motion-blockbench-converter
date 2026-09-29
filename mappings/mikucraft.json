@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "MMD standard bones -> Mikucraft",
+  "description": "Mapping for the Mikucraft GeckoLib model. Update it when the model's bones change; `miku-motion inspect-model` lists them.",
+  "units": { "translation_scale": 1.6 },
+  "unmapped": "warn",
+  "ignore": ["*指*", "両目", "左目", "右目"],
+  "bones": {
+    "Root": { "from": ["全ての親", "全ての親2", "センター", "グルーブ"], "translation": true },
+    "Body": { "from": ["腰", "上半身"] },
+    "Chest": "上半身2",
+    "Head": { "from": ["上半身2", "首", "頭"] },
+    "LeftArm": {
+      "from": ["上半身2", "左肩", "左腕"],
+      "rest_correction": { "euler_deg": [0, 0, -53] }
+    },
+    "BottomLeftArm": {
+      "from": ["左腕捩", "左ひじ", "左手捩"],
+      "rest_correction": { "euler_deg": [0, 0, -53] }
+    },
+    "RightArm": {
+      "from": ["上半身2", "右肩", "右腕"],
+      "rest_correction": { "euler_deg": [0, 0, 53] }
+    },
+    "BottomRightArm": {
+      "from": ["右腕捩", "右ひじ", "右手捩"],
+      "rest_correction": { "euler_deg": [0, 0, 53] }
+    },
+    "LeftLeg": { "from": ["腰", "下半身", { "bone": "腰", "weight": -1 }, "左足"] },
+    "BottomLeftLeg": "左ひざ",
+    "RightLeg": { "from": ["腰", "下半身", { "bone": "腰", "weight": -1 }, "右足"] },
+    "BottomRightLeg": "右ひざ"
+  }
+}

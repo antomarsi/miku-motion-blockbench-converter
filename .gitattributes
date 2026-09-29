@@ -1,0 +1,2 @@
+# LF everywhere: output is byte-deterministic and golden files are compared exactly.
+* text=auto eol=lf

@@ -1,0 +1,44 @@
+# Real assets are NEVER committed (third-party motions, the user's models/textures).
+# Put them under assets/; tests marked `real_assets` read them and skip when absent.
+/assets/
+*.vmd
+*.vpd
+*.pmx
+*.pmd
+*.bbmodel
+*.png
+!/tests/**/*.vmd
+!/tests/**/*.bbmodel
+!/docs/**/*.png
+
+# Conversion outputs produced while experimenting
+/out/
+*.animation.json
+!/tests/**/*.animation.json
+!/examples/**/*.animation.json
+conversion-report*.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Audio (music is third-party too)
+*.ogg
+*.mp3
+*.wav
