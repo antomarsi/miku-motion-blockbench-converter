@@ -183,3 +183,22 @@ def test_continuous_sequence_has_no_jumps() -> None:
 def test_continuous_requires_sequence() -> None:
     with pytest.raises(ValueError, match=r"\(N, 4\)"):
         euler.continuous_from_quats(quat.identity())
+
+
+@given(st.lists(st.tuples(angles, st.floats(-1.6, 1.6), angles), min_size=1, max_size=12))
+def test_vectorized_continuity_matches_per_sample_choice(steps: list[tuple[float, float, float]]):
+    qs = euler.to_quat(np.cumsum(np.array(steps), axis=0))
+    expected, prev = [], np.zeros(3)
+    for q in qs:
+        prev = euler.closest_to(q, prev)
+        expected.append(prev)
+    np.testing.assert_allclose(euler.continuous_from_quats(qs), np.array(expected), atol=1e-9)
+
+
+def test_exact_gimbal_lock_keeps_the_previous_split() -> None:
+    """Regression: float noise at exactly y = 90 deg used to pick an arbitrary X/Z split
+    (e.g. (0, 90, 0) after (40, 88, -60)), a 115 deg jump for a 15 deg rotation."""
+    previous = np.radians([40.0, 88.0, -60.0])
+    q = euler.to_quat(np.radians([50.0, 90.0, -65.0]))
+    angles = np.degrees(euler.closest_to(q, previous))
+    np.testing.assert_allclose(angles, [55.0, 90.0, -60.0], atol=1e-6)  # z kept, x = 115 - 60

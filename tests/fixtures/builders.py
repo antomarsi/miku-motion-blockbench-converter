@@ -39,16 +39,19 @@ def vmd(
 
 # --- Blockbench models ---------------------------------------------------------------------
 
-type GroupSpec = tuple[str, str | None, tuple[float, float, float], tuple[float, float, float]]
+type Vec = tuple[float, float, float]
+type GroupSpec = tuple[str, str | None, Vec, Vec, tuple[Vec, Vec] | None]
 
 
 def group(
     name: str,
     parent: str | None,
-    origin: tuple[float, float, float] = (0.0, 0.0, 0.0),
-    rotation: tuple[float, float, float] = (0.0, 0.0, 0.0),
+    origin: Vec = (0.0, 0.0, 0.0),
+    rotation: Vec = (0.0, 0.0, 0.0),
+    cube: tuple[Vec, Vec] | None = None,
 ) -> GroupSpec:
-    return (name, parent, origin, rotation)
+    """A group (bone), optionally holding one cube given as ``(from, to)``."""
+    return (name, parent, origin, rotation, cube)
 
 
 def bbmodel(
@@ -66,7 +69,8 @@ def bbmodel(
 
     def node(name: str) -> dict[str, Any]:
         spec = next(g for g in groups if g[0] == name)
-        kids: list[Any] = [cube_ids[name]] + [node(c) for c in children.get(name, [])]
+        own_cube = [cube_ids[name]] if spec[4] is not None else []
+        kids: list[Any] = own_cube + [node(c) for c in children.get(name, [])]
         if layout == 5:
             return {"uuid": uuids[name], "isOpen": True, "children": kids}
         return {
@@ -81,8 +85,9 @@ def bbmodel(
         "meta": {"format_version": f"{layout}.0", "model_format": model_format},
         "name": name,
         "elements": [
-            {"uuid": cube_ids[g[0]], "name": g[0], "from": [0, 0, 0], "to": [1, 1, 1]}
+            {"uuid": cube_ids[g[0]], "name": g[0], "from": list(g[4][0]), "to": list(g[4][1])}
             for g in groups
+            if g[4] is not None
         ],
         "outliner": [node(name) for name in children.get(None, [])],
     }

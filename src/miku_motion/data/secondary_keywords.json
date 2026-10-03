@@ -1,0 +1,10 @@
+{
+  "description": "Name fragments used to suggest secondary-motion chains and a preset for each. ASCII fragments match the start of a name token (SquareHair_Right -> square, hair, right); other fragments match anywhere. Checked in order; the first match wins.",
+  "presets": [
+    { "preset": "long_hair", "match": ["twintail", "pigtail", "tt", "braid", "long_hair", "longhair", "ツイン", "おさげ", "三つ編み"] },
+    { "preset": "ponytail", "match": ["ponytail", "pony", "ポニー", "tail_hair"] },
+    { "preset": "short_hair", "match": ["hair", "bang", "fringe", "ahoge", "sideburn", "髪", "前髪", "アホ毛", "もみあげ"] },
+    { "preset": "cloth", "match": ["skirt", "cape", "cloak", "coat", "scarf", "sleeve", "cloth", "dress", "スカート", "マント", "袖"] },
+    { "preset": "accessory", "match": ["tie", "ribbon", "bow", "chain", "string", "earring", "tassel", "lanyard", "strap", "リボン", "ネクタイ", "紐"] }
+  ]
+}

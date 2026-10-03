@@ -17,8 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from miku_motion.animation.skeleton import Bone, Skeleton, make_bone
 from miku_motion.errors import TargetModelError
+from miku_motion.geometry.quat import FloatArray
 
 GECKOLIB_FORMATS = frozenset({"geckolib_model", "animated_entity_model"})
 
@@ -57,7 +60,23 @@ def parse_bbmodel(data: dict[str, Any], path: Path) -> BlockbenchModel:
     groups_by_uuid: dict[str, dict[str, Any]] = {
         g["uuid"]: g for g in data.get("groups", []) if isinstance(g, dict) and "uuid" in g
     }
+    cubes: dict[str, tuple[tuple[float, ...], tuple[float, ...]]] = {
+        e["uuid"]: (tuple(e["from"]), tuple(e["to"]))
+        for e in data.get("elements", [])
+        if isinstance(e, dict)
+        and "uuid" in e
+        and len(e.get("from", ())) == 3
+        and len(e.get("to", ())) == 3
+    }
     bones: list[Bone] = []
+
+    def extent(children: list[Any]) -> FloatArray | None:
+        """Bounding box of the cubes directly inside a group (cube rotation ignored)."""
+        corners = [np.array(c, dtype=float) for u in children if u in cubes for c in cubes[u]]
+        if not corners:
+            return None
+        points = np.stack(corners)
+        return np.stack([points.min(axis=0), points.max(axis=0)])
 
     def visit(node: Any, parent: str | None) -> None:
         if isinstance(node, str):  # a cube (or other element) reference
@@ -77,6 +96,7 @@ def parse_bbmodel(data: dict[str, Any], path: Path) -> BlockbenchModel:
                 parent,
                 _vector(group.get("origin"), f"{what} origin", path),
                 _vector(group.get("rotation"), f"{what} rotation", path),
+                extent([c for c in node.get("children", []) if isinstance(c, str)]),
             )
         )
         for child in node.get("children", []):

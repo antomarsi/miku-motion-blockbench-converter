@@ -30,6 +30,23 @@ def rotation_channel(bone: Bone, rotations: FloatArray) -> FloatArray:
     return result
 
 
+def rotation_value_near(bone: Bone, rotation: FloatArray, near: FloatArray) -> FloatArray:
+    """Keyframe value (degrees, ``(3,)``) for one rotation, closest to the value ``near``."""
+    rest = np.radians(bone.rest_euler_degrees)
+    previous = rest + np.radians(np.asarray(near) * ROTATION_SIGNS)
+    angles = euler.closest_to(rotation, previous)
+    result: FloatArray = np.degrees(angles - rest) * ROTATION_SIGNS
+    return result
+
+
+def rotation_from_channel(bone: Bone, values: FloatArray) -> FloatArray:
+    """The rotations GeckoLib displays for keyframe values (inverse of the above)."""
+    angles = np.radians(bone.rest_euler_degrees) + np.radians(
+        np.asarray(values, dtype=np.float64) * ROTATION_SIGNS
+    )
+    return euler.to_quat(angles)
+
+
 def position_channel(translations: FloatArray) -> FloatArray:
     """Keyframe values (pixels, ``(N, 3)``) for canonical parent-frame offsets."""
     result: FloatArray = np.asarray(translations, dtype=np.float64) * POSITION_SIGNS

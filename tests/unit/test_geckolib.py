@@ -126,7 +126,12 @@ def test_empty_bones_is_valid_json() -> None:
 
 
 def test_time_collision_is_rejected() -> None:
-    animation = Animation(name="a", times=np.array([0.0, 0.00001]), length=0.00001)
+    animation = Animation(
+        name="a",
+        times=np.array([0.0, 0.00001]),
+        length=0.00001,
+        tracks={"root": BoneTrack(np.stack([_z(0), _z(10)]))},
+    )
     with pytest.raises(ValueError, match="collide"):
         write_animation(animation, SKELETON)
 

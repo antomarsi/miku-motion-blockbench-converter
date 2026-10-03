@@ -6,26 +6,33 @@ Sign conventions of particular file formats are *not* handled here; see
 ``geckolib.encoding``.
 """
 
+import math
+
 import numpy as np
 
 from miku_motion.geometry import quat
 from miku_motion.geometry.quat import ArrayLike, FloatArray
 
-_X = np.array([1.0, 0.0, 0.0])
-_Y = np.array([0.0, 1.0, 0.0])
-_Z = np.array([0.0, 0.0, 1.0])
-
-# Below this |cos(y)| the X and Z axes are treated as aligned (gimbal lock).
-_GIMBAL_EPS = 1e-9
+# Below this |cos(y)| (about 0.00006 deg from +-90) X and Z are treated as aligned
+# (gimbal lock): float noise at an exact lock must not pick an arbitrary X/Z split.
+_GIMBAL_EPS = 1e-6
 
 
 def to_quat(euler: ArrayLike) -> FloatArray:
-    """Quaternion for ZYX Euler angles ``[x, y, z]`` (radians)."""
+    """Quaternion for ZYX Euler angles ``[x, y, z]`` (radians): ``qz * qy * qx``."""
     e = np.asarray(euler, dtype=np.float64)
-    qx = quat.from_axis_angle(_X, e[..., 0])
-    qy = quat.from_axis_angle(_Y, e[..., 1])
-    qz = quat.from_axis_angle(_Z, e[..., 2])
-    return quat.mul_chain(qz, qy, qx)
+    half = 0.5 * e
+    cx, cy, cz = np.cos(half[..., 0]), np.cos(half[..., 1]), np.cos(half[..., 2])
+    sx, sy, sz = np.sin(half[..., 0]), np.sin(half[..., 1]), np.sin(half[..., 2])
+    return np.stack(
+        [
+            cz * cy * sx - sz * sy * cx,
+            cz * sy * cx + sz * cy * sx,
+            sz * cy * cx - cz * sy * sx,
+            cz * cy * cx + sz * sy * sx,
+        ],
+        axis=-1,
+    )
 
 
 def _matrix(q: FloatArray) -> FloatArray:
@@ -93,14 +100,32 @@ def closest_to(q: ArrayLike, previous: ArrayLike) -> FloatArray:
 def continuous_from_quats(qs: ArrayLike, start: ArrayLike | None = None) -> FloatArray:
     """Convert an ``(N, 4)`` rotation sequence to a continuous ``(N, 3)`` Euler curve.
 
-    The first sample is taken nearest ``start`` (default: zero, i.e. the rest pose).
+    Equivalent to calling :func:`closest_to` sample by sample (the first one nearest
+    ``start``, default zero), but the decompositions are computed in one vectorized pass
+    and only the branch choice runs per sample.
     """
     arr = quat.as_quat(qs)
     if arr.ndim != 2:
         raise ValueError("continuous_from_quats expects an (N, 4) sequence")
-    out = np.empty((len(arr), 3))
-    prev = np.zeros(3) if start is None else np.asarray(start, dtype=np.float64)
-    for i, q in enumerate(arr):
-        prev = closest_to(q, prev)
-        out[i] = prev
-    return out
+    principal = from_quat(arr)
+    locked = np.sqrt(np.maximum(0.0, 1.0 - np.sin(principal[:, 1]) ** 2)) < _GIMBAL_EPS
+    rows = principal.tolist()
+    flags = locked.tolist()
+    two_pi = 2.0 * math.pi
+    px, py, pz = (0.0, 0.0, 0.0) if start is None else (float(v) for v in np.asarray(start))
+    out = []
+    for i, (x, y, z) in enumerate(rows):
+        if flags[i]:  # gimbal lock: the X/Z split depends on the previous angles
+            x, y, z = from_quat(arr[i], reference_z=pz).tolist()
+        best = None
+        for cx, cy, cz in ((x, y, z), (x + math.pi, math.pi - y, z + math.pi)):
+            cx += two_pi * round((px - cx) / two_pi)
+            cy += two_pi * round((py - cy) / two_pi)
+            cz += two_pi * round((pz - cz) / two_pi)
+            distance = (cx - px) ** 2 + (cy - py) ** 2 + (cz - pz) ** 2
+            if best is None or distance < best[0]:
+                best = (distance, cx, cy, cz)
+        assert best is not None
+        _, px, py, pz = best
+        out.append((px, py, pz))
+    return np.array(out, dtype=np.float64).reshape(len(rows), 3)

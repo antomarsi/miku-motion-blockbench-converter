@@ -9,6 +9,7 @@ from typer.testing import CliRunner
 
 from miku_motion.cli import app
 from miku_motion.errors import MikuMotionError
+from miku_motion.geckolib.optimize import Tolerance
 from miku_motion.pipeline import ConvertOptions, convert
 from miku_motion.vmd.parser import read_vmd
 from miku_motion.vmd.writer import write_vmd
@@ -122,22 +123,32 @@ def test_cli_synth_calibration(tmp_path: Path) -> None:
     assert len(frames) == len(set(frames))
 
 
+def _real_pairs(assets_dir: Path) -> list[tuple[Path, Path]]:
+    """(model, mapping) pairs: mappings/<name>.json goes with assets/models/<name>.bbmodel."""
+    models = {p.stem.lower(): p for p in (assets_dir / "models").glob("*.bbmodel")}
+    mappings = sorted((Path(__file__).resolve().parents[2] / "mappings").glob("*.json"))
+    return [(models[m.stem.lower()], m) for m in mappings if m.stem.lower() in models]
+
+
 @pytest.mark.real_assets
 def test_every_real_motion_converts(assets_dir: Path) -> None:
-    """Each motion style (e.g. waist/groove-driven vs. root-offset-driven) must convert and
-    stay near the model's origin: large root drift means a root bone is missing from the
-    mapping (regression: Rolling Girl's 全ての親2 offset)."""
+    """Each motion style (e.g. waist/groove-driven vs. root-offset-driven) must convert onto
+    each model with a mapping, and stay near the model's origin: large root drift means a
+    root bone is missing from the mapping (regression: Rolling Girl's 全ての親2 offset)."""
     motions = sorted((assets_dir / "motions").glob("*.vmd"))
-    models = sorted((assets_dir / "models").glob("*.bbmodel"))
-    mapping = Path(__file__).resolve().parents[2] / "mappings" / "mikucraft.json"
-    if not motions or not models:
+    pairs = _real_pairs(assets_dir)
+    if not motions or not pairs:
         pytest.skip("real assets missing")
-    for motion in motions:
-        result = convert(motion, models[0], mapping, ConvertOptions(fps=20))
-        clip = next(iter(json.loads(result.text)["animations"].values()))
-        root = clip["bones"]["Root"]["position"].values()
-        drift = max(abs(v) for key in root for v in key)
-        assert drift < 48, f"{motion.name}: root moves {drift} px from the origin"
+    for model, mapping in pairs:
+        mapped = json.loads(mapping.read_text(encoding="utf-8"))["bones"]
+        roots = [t for t, e in mapped.items() if isinstance(e, dict) and e.get("translation")]
+        for motion in motions:
+            result = convert(motion, model, mapping, ConvertOptions(fps=20))
+            bones = next(iter(json.loads(result.text)["animations"].values()))["bones"]
+            for root in roots:
+                keys = bones[root]["position"].values()
+                drift = max(abs(v) for key in keys for v in key)
+                assert drift < 48, f"{motion.name} on {model.name}: {root} drifts {drift} px"
 
 
 # --- sound keyframes ---------------------------------------------------------------------------
@@ -269,3 +280,96 @@ def test_cli_ik_options(squat: tuple[Path, Path, Path], tmp_path: Path) -> None:
     result = CliRunner().invoke(app, [*base, "--source-skeleton", "nope"])
     assert result.exit_code == 1
     assert "unknown built-in skeleton" in result.output
+
+
+# --- keyframe reduction ------------------------------------------------------------------------
+
+
+def test_optimize_keeps_only_needed_keys(inputs: tuple[Path, Path, Path]) -> None:
+    """The arm-wave slice is linear in time: optimized, each channel needs 2 keys."""
+    result = convert(*inputs, ConvertOptions(fps=60, tolerance=Tolerance()))
+    bones = _clip(result.text)["bones"]
+    assert list(bones["LeftArm"]["rotation"]) == ["0.0", "1.0"]
+    assert bones["LeftArm"]["rotation"]["1.0"] == [0, 0, -60]
+    assert list(bones["Root"]["position"]) == ["0.0", "1.0"]
+    reduced = next(d for d in result.diagnostics.items if d.code.value == "MM401")
+    assert "reduced from 122 to 4" in reduced.message
+
+
+def test_optimized_output_is_deterministic(squat: tuple[Path, Path, Path]) -> None:
+    options = ConvertOptions(fps=60, tolerance=Tolerance())
+    assert convert(*squat, options).text == convert(*squat, options).text
+
+
+def test_cli_optimize_defaults_to_60_fps(inputs: tuple[Path, Path, Path], tmp_path: Path) -> None:
+    motion, model, mapping = inputs
+    args = [
+        "convert",
+        str(motion),
+        "-t",
+        str(model),
+        "-m",
+        str(mapping),
+        "-o",
+        str(tmp_path / "o.json"),
+    ]
+    result = CliRunner().invoke(app, [*args, "--optimize", "--rotation-tolerance", "0.25"])
+    assert result.exit_code == 0, result.output
+    assert "@ 60 fps" in result.output
+    assert "MM401" in result.output
+
+
+# --- secondary motion ---------------------------------------------------------------------------
+
+
+def test_hair_chain_swings_when_the_head_turns(tmp_path: Path) -> None:
+    motion = tmp_path / "turn.vmd"
+    motion.write_bytes(
+        write_vmd(
+            vmd(
+                bone_key("頭", 0),
+                bone_key("頭", 10, rotation=axis_angle((0, 1, 0), 90)),
+                bone_key("頭", 40, rotation=axis_angle((0, 1, 0), 90)),
+            )
+        )
+    )
+    rig = write_json(
+        tmp_path / "rig.bbmodel",
+        bbmodel(
+            group("Head", None, (0, 24, 0)),
+            group("Tail", "Head", (4, 32, 3)),
+            group("TailEnd", "Tail", (6, 20, 3)),
+        ),
+    )
+    mapping = write_json(
+        tmp_path / "m.json",
+        {"bones": {"Head": "頭"}, "secondary_motion": [{"bones": ["Tail", "TailEnd"]}]},
+    )
+    result = convert(motion, rig, mapping, ConvertOptions(fps=20))
+    bones = _clip(result.text)["bones"]
+    assert {"Head", "Tail", "TailEnd"} <= bones.keys()
+    swing = [max(map(abs, v)) for v in bones["Tail"]["rotation"].values()]
+    assert max(swing) > 5  # flung out by the turn
+    assert swing[-1] < max(swing) / 2  # and settling afterwards
+    assert "MM302" in {d.code.value for d in result.diagnostics.items}
+
+
+def test_cli_inspect_model_suggests_chains(tmp_path: Path) -> None:
+    rig = write_json(
+        tmp_path / "rig.bbmodel",
+        bbmodel(
+            group("Head", None, (0, 24, 0), cube=((-4, 24, -4), (4, 32, 4))),
+            group("Ponytail", "Head", (0, 30, 5), cube=((-1, 18, 4), (1, 30, 6))),
+        ),
+    )
+    result = CliRunner().invoke(app, ["inspect-model", str(rig)])
+    assert result.exit_code == 0, result.output
+    assert "Ponytail  pivot 0, 30, 5" in result.output
+    assert '{ "bones": ["Ponytail"], "preset": "ponytail" }' in result.output
+
+    mapping = write_json(
+        tmp_path / "m.json",
+        {"bones": {"Head": "頭"}, "secondary_motion": [{"bones": ["Ponytail"]}]},
+    )
+    result = CliRunner().invoke(app, ["inspect-model", str(rig), "-m", str(mapping)])
+    assert "No unconfigured hair/cloth-like chains found." in result.output

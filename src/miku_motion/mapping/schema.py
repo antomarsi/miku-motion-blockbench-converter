@@ -22,7 +22,14 @@ import json
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from miku_motion.errors import MappingError
 
@@ -54,6 +61,28 @@ class BoneEntry(_Strict):
         return tuple(ChainLink(bone=x) if isinstance(x, str) else x for x in self.from_)
 
 
+class SecondaryMotionSpec(_Strict):
+    """A springy chain of target bones (hair, tie...) simulated from the body's motion.
+
+    Unset values come from ``preset`` (default ``long_hair``).
+    """
+
+    bones: list[str] = Field(min_length=1)  # parent to child
+    preset: Literal["long_hair", "ponytail", "short_hair", "cloth", "accessory"] | None = None
+    tip: tuple[float, float, float] | None = None  # end of the last bone; default: its cubes
+    stiffness: float | None = Field(default=None, gt=0)  # higher = follows the body more
+    bounciness: float | None = Field(default=None, ge=0, le=1)  # 0 = no overshoot, 1 = springy
+    damping: float | None = Field(default=None, ge=0)  # advanced: instead of bounciness
+    gravity: float | None = Field(default=None, ge=0)  # 1 = real gravity at Minecraft scale
+    offset: tuple[float, float, float] = (0.0, 0.0, 0.0)  # px; rest shift of the tip (+Z = back)
+
+    @model_validator(mode="after")
+    def _one_damping_setting(self) -> "SecondaryMotionSpec":
+        if self.damping is not None and self.bounciness is not None:
+            raise ValueError("set either bounciness or damping, not both")
+        return self
+
+
 class Units(_Strict):
     translation_scale: float = Field(default=1.0, gt=0)  # target units per source unit
 
@@ -66,6 +95,7 @@ class MappingFile(_Strict):
     unmapped: Literal["warn", "error", "ignore"] = "warn"
     ignore: list[str] = Field(default_factory=list)
     bones: dict[str, str | BoneEntry]
+    secondary_motion: list[SecondaryMotionSpec] = Field(default_factory=list)
 
     @field_validator("bones")
     @classmethod

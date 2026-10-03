@@ -20,6 +20,8 @@ class Bone:
     pivot: FloatArray  # (3,) rotation origin, in model space
     rest_rotation: FloatArray  # (4,) local rotation relative to the parent, at rest
     rest_euler_degrees: FloatArray  # (3,) the same rest rotation as authored (ZYX, degrees)
+    # (2, 3) min/max corner of the bone's own geometry (cubes directly inside it), if any.
+    extent: FloatArray | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +82,7 @@ def make_bone(
     parent: str | None,
     pivot: tuple[float, float, float] | FloatArray = (0.0, 0.0, 0.0),
     rest_euler_degrees: tuple[float, float, float] | FloatArray = (0.0, 0.0, 0.0),
+    extent: FloatArray | None = None,
 ) -> Bone:
     """Build a bone from a ZYX Euler rest rotation in degrees (Blockbench's convention)."""
     degrees = np.asarray(rest_euler_degrees, dtype=np.float64)
@@ -89,4 +92,5 @@ def make_bone(
         pivot=np.asarray(pivot, dtype=np.float64),
         rest_rotation=euler.to_quat(np.radians(degrees)),
         rest_euler_degrees=degrees,
+        extent=extent,
     )

@@ -47,7 +47,7 @@ def _names(names: list[str] | tuple[str, ...]) -> str:
     return shown + (f" (+{len(names) - _LIST_LIMIT} more)" if len(names) > _LIST_LIMIT else "")
 
 
-def _unknown_targets(unknown: list[str], skeleton: Skeleton) -> str:
+def unknown_targets(unknown: list[str], skeleton: Skeleton) -> str:
     lines = []
     for name in unknown:
         close = difflib.get_close_matches(name, skeleton.names, n=1)
@@ -68,7 +68,7 @@ def resolve(
     unknown = [target for target in entries if target not in skeleton]
     if unknown:
         raise MappingError(
-            f"mapped target bones not found in the model:\n{_unknown_targets(unknown, skeleton)}",
+            f"mapped target bones not found in the model:\n{unknown_targets(unknown, skeleton)}",
             path=mapping_path,
             hint="the model may have changed; run `miku-motion inspect-model` to list its bones",
         )

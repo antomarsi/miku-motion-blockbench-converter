@@ -42,6 +42,36 @@ The **mapping file** describes how MMD bones drive your model's bones. The conve
 - The effect ID defaults to `<mod id>:<audio file name>`, using the GeckoLib mod ID stored in the `.bbmodel`. Override it with `--sound`.
 - The converter doesn't copy the audio anywhere. The consuming mod must register a sound with that ID and handle GeckoLib sound keyframes.
 
+### Hair and other secondary motion
+
+MMD hair, skirts and ties move by physics, which a `.vmd` doesn't store. Instead, list springy chains of your model's bones in the mapping, and the converter simulates them from the body's motion. It doesn't need any IK set up in Blockbench: twintails, a single back ponytail, short hair, a tie or a skirt are all just chains of one or more bones.
+
+```json
+"secondary_motion": [
+  { "bones": ["Tt_right", "middle_right", "bottom_right"], "preset": "long_hair", "offset": [0, 0, 4] },
+  { "bones": ["Ponytail"], "preset": "ponytail", "bounciness": 0.7 }
+]
+```
+
+- **`bones`:** parent to child.
+- **`preset`:** `long_hair` (default), `ponytail`, `short_hair`, `cloth` or `accessory`. Any value below overrides the preset.
+- **`bounciness`:** from 0 (settles without overshooting) to 1 (keeps bouncing). `damping` sets the same thing directly, for advanced use.
+- **`stiffness`:** how tightly the chain follows the body.
+- **`gravity`:** 1 = real gravity at Minecraft scale.
+- **`offset`:** shifts the chain's resting shape, in pixels at the tip. For example, `[0, 0, 4]` hangs hair 4 px further back (+Z is the back).
+- **`tip`:** where the last bone ends. By default it's measured from that bone's cubes, so one-bone chains need no extra setup.
+
+`miku-motion inspect-model model.bbmodel [-m mapping.json]` lists a model's bones and suggests hair, cloth and accessory chains it finds by name and shape, as a snippet you can paste into the mapping. Conversions also mention unconfigured candidates (info MM303).
+
+### Smaller, smoother files
+
+`--optimize` keeps only the keyframes GeckoLib needs, within a tolerance (default 1°, `--rotation-tolerance`; positions 0.05 px, `--position-tolerance`):
+
+- **Sampling:** the motion is sampled at 60 fps by default, and keys are dropped wherever GeckoLib's linear blend between the remaining keys stays within tolerance of the real motion.
+- **Accuracy:** the check is on the true 3D rotation, including halfway between samples. It catches the detours that plain sampling produces near gimbal lock, where a bone turns about 90° sideways and its angles swing wildly.
+- **Size:** dense, motion-capture-like dances shrink by roughly 25–60% depending on tolerance. Hand-keyed motions shrink much more.
+- **Report:** the conversion prints the key count before and after, and the worst error (info MM401). Warning MM402 means some fast moves still exceed the tolerance; a higher `--fps` helps.
+
 ### Leg IK
 
 Most dances move the legs through MMD's IK: the motion stores where the feet go, and MMD bends the knees to reach them. The converter solves this IK the way MMD does, so knees bend and feet stay planted.

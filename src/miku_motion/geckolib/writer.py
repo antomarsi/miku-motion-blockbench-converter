@@ -6,10 +6,12 @@ decimals with ``-0`` normalized, times come from integer sample indices, and eve
 keyframe sits on its own line (readable diffs without a huge file).
 
 Channels that never change are written as a single keyframe; channels that stay at
-the rest pose are omitted.
+the rest pose are omitted. With a tolerance, channels are reduced to the keyframes
+GeckoLib needs to stay within it (``optimize.py``).
 """
 
 import json
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -17,6 +19,7 @@ import numpy as np
 from miku_motion.animation.clip import Animation, LoopMode
 from miku_motion.animation.skeleton import Skeleton
 from miku_motion.geckolib import encoding
+from miku_motion.geckolib.optimize import Tolerance, reduce_position, reduce_rotation
 from miku_motion.geometry.quat import FloatArray
 
 FORMAT_VERSION = "1.8.0"
@@ -44,19 +47,34 @@ def format_time(seconds: float) -> str:
     return text if "." in text else f"{text}.0"
 
 
-def _channel(times: list[str], values: FloatArray) -> dict[str, list[Number]] | None:
+@dataclass(slots=True)
+class WriteStats:
+    dense_keys: int = 0  # keyframes the channels would have without reduction
+    keys: int = 0  # keyframes written
+    max_rotation_error: float = 0.0  # degrees, from reduction
+    max_position_error: float = 0.0  # pixels, from reduction
+
+
+def _channel(times: FloatArray, values: FloatArray) -> dict[str, list[Number]] | None:
     rounded = np.round(values, DECIMALS) + 0.0  # + 0.0 turns -0.0 into 0.0
     if not np.any(rounded):
         return None
-    rows = rounded[:1] if np.all(rounded == rounded[0]) else rounded
-    return {times[i]: [format_number(v) for v in row] for i, row in enumerate(rows)}
+    if np.all(rounded == rounded[0]):
+        times, rounded = times[:1], rounded[:1]
+    labels = [format_time(t) for t in times]
+    if len(set(labels)) != len(labels):
+        raise ValueError("keyframe times collide after rounding; lower the fps")
+    return {
+        label: [format_number(v) for v in row] for label, row in zip(labels, rounded, strict=True)
+    }
 
 
-def build_document(animation: Animation, skeleton: Skeleton) -> dict[str, Any]:
-    times = [format_time(t) for t in animation.times]
-    if len(set(times)) != len(times):
-        raise ValueError("sample times collide after rounding; lower the fps")
-
+def build_document(
+    animation: Animation, skeleton: Skeleton, tolerance: Tolerance | None = None
+) -> tuple[dict[str, Any], WriteStats]:
+    """The GeckoLib document; with a ``tolerance``, channels are reduced (see optimize)."""
+    times = animation.times
+    stats = WriteStats()
     bones: dict[str, Any] = {}
     for bone in skeleton:
         track = animation.tracks.get(bone.name)
@@ -64,13 +82,29 @@ def build_document(animation: Animation, skeleton: Skeleton) -> dict[str, Any]:
             continue
         channels: dict[str, Any] = {}
         if track.rotations is not None:
-            rotation = _channel(times, encoding.rotation_channel(bone, track.rotations))
+            if tolerance is None:
+                key_times, values = times, encoding.rotation_channel(bone, track.rotations)
+            else:
+                reduced = reduce_rotation(bone, times, track.rotations, tolerance.rotation_degrees)
+                key_times, values = reduced.times, reduced.values
+                stats.max_rotation_error = max(stats.max_rotation_error, reduced.max_error)
+            rotation = _channel(key_times, values)
             if rotation:
                 channels["rotation"] = rotation
+                stats.dense_keys += len(times) if len(rotation) > 1 else 1
+                stats.keys += len(rotation)
         if track.translations is not None:
-            position = _channel(times, encoding.position_channel(track.translations))
+            values = encoding.position_channel(track.translations)
+            key_times = times
+            if tolerance is not None:
+                reduced = reduce_position(times, values, tolerance.position)
+                key_times, values = reduced.times, reduced.values
+                stats.max_position_error = max(stats.max_position_error, reduced.max_error)
+            position = _channel(key_times, values)
             if position:
                 channels["position"] = position
+                stats.dense_keys += len(times) if len(position) > 1 else 1
+                stats.keys += len(position)
         if channels:
             bones[bone.name] = channels
 
@@ -88,7 +122,7 @@ def build_document(animation: Animation, skeleton: Skeleton) -> dict[str, Any]:
         "format_version": FORMAT_VERSION,
         "animations": {animation.name: clip},
         "geckolib_format_version": GECKOLIB_FORMAT_VERSION,
-    }
+    }, stats
 
 
 def _emit(value: Any, indent: int, out: list[str], prefix: str, suffix: str) -> None:
@@ -112,7 +146,14 @@ def _inline(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
-def write_animation(animation: Animation, skeleton: Skeleton) -> str:
+def render_animation(
+    animation: Animation, skeleton: Skeleton, tolerance: Tolerance | None = None
+) -> tuple[str, WriteStats]:
+    document, stats = build_document(animation, skeleton, tolerance)
     out: list[str] = []
-    _emit(build_document(animation, skeleton), 0, out, "", "")
-    return "\n".join(out) + "\n"
+    _emit(document, 0, out, "", "")
+    return "\n".join(out) + "\n", stats
+
+
+def write_animation(animation: Animation, skeleton: Skeleton) -> str:
+    return render_animation(animation, skeleton)[0]

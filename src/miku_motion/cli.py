@@ -6,15 +6,24 @@ import sys
 from pathlib import Path
 from typing import Annotated
 
+import numpy as np
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from miku_motion import __version__
 from miku_motion.animation.clip import LoopMode
+from miku_motion.blockbench.bbmodel import read_bbmodel
 from miku_motion.diagnostics import Diagnostics, Severity
 from miku_motion.errors import MikuMotionError
-from miku_motion.pipeline import DEFAULT_FPS, ConvertOptions, convert
+from miku_motion.geckolib.optimize import (
+    DEFAULT_POSITION_TOLERANCE,
+    DEFAULT_ROTATION_TOLERANCE,
+    Tolerance,
+)
+from miku_motion.mapping.schema import MappingFile, load_mapping
+from miku_motion.mapping.secondary import suggest_chains
+from miku_motion.pipeline import DEFAULT_FPS, OPTIMIZED_FPS, ConvertOptions, convert
 from miku_motion.rig.schema import DEFAULT_SKELETON
 from miku_motion.vmd import synth
 from miku_motion.vmd.parser import read_vmd
@@ -105,8 +114,28 @@ def convert_command(
         typer.Option("--output", "-o", dir_okay=False, help="Default: <motion>.animation.json"),
     ] = None,
     fps: Annotated[
-        float, typer.Option(min=1.0, max=240.0, help="Samples per second of output.")
-    ] = DEFAULT_FPS,
+        float | None,
+        typer.Option(
+            min=1.0,
+            max=240.0,
+            help=f"Samples per second (default {DEFAULT_FPS:g}, or {OPTIMIZED_FPS:g} with "
+            "--optimize).",
+            show_default=False,
+        ),
+    ] = None,
+    optimize: Annotated[
+        bool,
+        typer.Option(
+            help="Keep only the keyframes needed to stay within the tolerances: much smaller "
+            "files, and no interpolation detours between keys."
+        ),
+    ] = False,
+    rotation_tolerance: Annotated[
+        float, typer.Option(min=0.01, help="Max rotation error with --optimize (degrees).")
+    ] = DEFAULT_ROTATION_TOLERANCE,
+    position_tolerance: Annotated[
+        float, typer.Option(min=0.001, help="Max position error with --optimize (pixels).")
+    ] = DEFAULT_POSITION_TOLERANCE,
     name: Annotated[
         str | None, typer.Option(help="Animation name. Default: animation.<model>.<motion>")
     ] = None,
@@ -138,8 +167,10 @@ def convert_command(
     strict: Annotated[bool, typer.Option(help="Fail when any warning is emitted.")] = False,
 ) -> None:
     """Convert a .vmd motion into a GeckoLib .animation.json for a Blockbench model."""
+    sample_rate = fps if fps is not None else (OPTIMIZED_FPS if optimize else DEFAULT_FPS)
     options = ConvertOptions(
-        fps=fps,
+        fps=sample_rate,
+        tolerance=Tolerance(rotation_tolerance, position_tolerance) if optimize else None,
         name=name,
         loop=loop,
         audio=audio,
@@ -161,11 +192,62 @@ def convert_command(
     animation = result.animation
     console.print(
         f"[green]wrote[/] {destination}  ({len(animation.tracks)} bones, "
-        f"{len(animation.times)} samples @ {fps:g} fps, {animation.length:.2f} s)",
+        f"{len(animation.times)} samples @ {sample_rate:g} fps, {animation.length:.2f} s)",
         soft_wrap=True,
     )
     for cue in animation.sounds:
         console.print(f"  sound keyframe at {cue.time:g} s: {cue.effect}")
+
+
+@app.command(name="inspect-model")
+def inspect_model(
+    model: ExistingFile,
+    mapping: Annotated[
+        Path | None,
+        typer.Option(
+            "--mapping", "-m", exists=True, dir_okay=False, help="Skip bones it already uses."
+        ),
+    ] = None,
+) -> None:
+    """Show a Blockbench model's bones and suggest hair/cloth chains for secondary motion."""
+    try:
+        target = read_bbmodel(model)
+        config = load_mapping(mapping) if mapping else MappingFile(bones={"": ""})
+    except MikuMotionError as error:
+        raise _fail(error) from error
+
+    skeleton = target.skeleton
+    console.print(
+        f"[bold]{model.name}[/]  (Blockbench {target.format_version}, {target.model_format}, "
+        f"{len(skeleton)} bones)"
+    )
+    used = set(config.bones) | {b for chain in config.secondary_motion for b in chain.bones}
+    for bone in skeleton:
+        depth = len(list(skeleton.ancestors(bone.name)))
+        pivot = ", ".join(f"{v:g}" for v in bone.pivot)
+        rest = (
+            "  rest " + ", ".join(f"{v:g}" for v in bone.rest_euler_degrees)
+            if np.any(bone.rest_euler_degrees)
+            else ""
+        )
+        tags = ("" if bone.extent is not None else "  (no cubes)") + (
+            "  [mapped]" if bone.name in used else ""
+        )
+        console.print(f"  {'  ' * depth}{bone.name}  [dim]pivot {pivot}{rest}{tags}[/]")
+
+    suggestions = suggest_chains(skeleton, config)
+    if not suggestions:
+        console.print("\nNo unconfigured hair/cloth-like chains found.")
+        return
+    console.print(
+        "\n[bold]Possible secondary_motion chains[/] (review, then paste into the mapping; "
+        "presets: long_hair, ponytail, short_hair, cloth, accessory):"
+    )
+    lines = []
+    for suggestion in suggestions:
+        bones = json.dumps(list(suggestion.bones), ensure_ascii=False)
+        lines.append(f'    {{ "bones": {bones}, "preset": "{suggestion.preset}" }}')
+    typer.echo('  "secondary_motion": [\n' + ",\n".join(lines) + "\n  ]")
 
 
 def _print_diagnostics(diagnostics: Diagnostics) -> None:
