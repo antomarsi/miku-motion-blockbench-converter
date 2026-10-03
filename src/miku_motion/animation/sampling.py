@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from miku_motion.animation import curves
-from miku_motion.animation.source import CURVE_ROTATION, SourceBoneTrack
+from miku_motion.animation.source import CURVE_ROTATION, MorphTrack, SourceBoneTrack
 from miku_motion.geometry import quat
 from miku_motion.geometry.quat import ArrayLike, FloatArray
 
@@ -55,3 +55,11 @@ def sample_track(track: SourceBoneTrack, frames: ArrayLike) -> PoseSamples:
     translations = t0 + (t1 - t0) * progress[:, :3]
     rotations = quat.slerp(track.rotations[i], track.rotations[j], progress[:, CURVE_ROTATION])
     return PoseSamples(translations, rotations)
+
+
+def sample_morph(track: MorphTrack, frames: ArrayLike) -> FloatArray:
+    """A morph's weight at (fractional) source ``frames``: linear, held at the ends."""
+    result: FloatArray = np.interp(
+        np.asarray(frames, dtype=np.float64), track.frames, track.weights
+    )
+    return result

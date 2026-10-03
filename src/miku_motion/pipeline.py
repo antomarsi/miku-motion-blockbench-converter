@@ -10,6 +10,7 @@ from miku_motion.animation.clip import Animation, LoopMode
 from miku_motion.animation.sampling import PoseSamples, sample_times, sample_track
 from miku_motion.blockbench.bbmodel import BlockbenchModel, read_bbmodel
 from miku_motion.conversion.coordinates import MMD_TO_CANONICAL
+from miku_motion.conversion.morphs import apply_morph_rules, resolve_morph_rules
 from miku_motion.conversion.retarget import retarget
 from miku_motion.conversion.secondary import apply_secondary_motion
 from miku_motion.diagnostics import Code, Diagnostics
@@ -150,6 +151,10 @@ def convert(
         name=options.name or default_animation_name(model, motion_path),
         loop=options.loop,
     )
+    morph_rules = resolve_morph_rules(
+        mapping_file.morphs, model.skeleton, motion, diagnostics, mapping_path=mapping_path
+    )
+    apply_morph_rules(animation, model.skeleton, motion, morph_rules)
     if chains:
         apply_secondary_motion(animation, model.skeleton, chains)
         diagnostics.info(

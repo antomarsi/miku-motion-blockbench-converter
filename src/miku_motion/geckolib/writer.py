@@ -55,9 +55,11 @@ class WriteStats:
     max_position_error: float = 0.0  # pixels, from reduction
 
 
-def _channel(times: FloatArray, values: FloatArray) -> dict[str, list[Number]] | None:
+def _channel(
+    times: FloatArray, values: FloatArray, rest: float = 0.0
+) -> dict[str, list[Number]] | None:
     rounded = np.round(values, DECIMALS) + 0.0  # + 0.0 turns -0.0 into 0.0
-    if not np.any(rounded):
+    if np.all(rounded == rest):
         return None
     if np.all(rounded == rounded[0]):
         times, rounded = times[:1], rounded[:1]
@@ -105,6 +107,17 @@ def build_document(
                 channels["position"] = position
                 stats.dense_keys += len(times) if len(position) > 1 else 1
                 stats.keys += len(position)
+        if track.scales is not None:
+            values = np.asarray(track.scales, dtype=np.float64)
+            key_times = times
+            if tolerance is not None:
+                reduced = reduce_position(times, values, tolerance.scale)
+                key_times, values = reduced.times, reduced.values
+            scale = _channel(key_times, values, rest=1.0)
+            if scale:
+                channels["scale"] = scale
+                stats.dense_keys += len(times) if len(scale) > 1 else 1
+                stats.keys += len(scale)
         if channels:
             bones[bone.name] = channels
 

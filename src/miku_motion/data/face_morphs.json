@@ -1,0 +1,23 @@
+{
+  "description": "Standard MMD face morphs and the default effects `init-mapping` gives face bones it recognises inside the head (by name: eyelid/lid, eyes, eye, mouth, mouth_<vowel>, mouth_closed).",
+  "eyes_closed": ["まばたき", "笑い", "なごみ", "はぅ"],
+  "wink_left": ["ウィンク", "ウィンク２"],
+  "wink_right": ["ウィンク右", "ウィンク２右"],
+  "vowels": {
+    "a": ["あ"],
+    "i": ["い"],
+    "u": ["う"],
+    "e": ["え"],
+    "o": ["お"]
+  },
+  "eye_squash": [1, 0.1, 1],
+  "mouth_scale": {
+    "a": [1, 2.5, 1],
+    "i": [1.4, 0.8, 1],
+    "u": [0.7, 1.4, 1],
+    "e": [1.2, 1.6, 1],
+    "o": [0.9, 2.2, 1]
+  },
+  "swap_threshold": 0.5,
+  "skip_tokens": ["lash", "eyelash", "white", "pupil", "brow", "eyebrow", "glow", "highlight"]
+}

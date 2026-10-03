@@ -22,6 +22,7 @@ class LoopMode(StrEnum):
 class BoneTrack:
     rotations: FloatArray | None = None  # (N, 4) xyzw, full local rotation
     translations: FloatArray | None = None  # (N, 3) offset from rest, parent frame
+    scales: FloatArray | None = None  # (N, 3) multipliers (1 = rest; 0 hides the bone)
 
 
 @dataclass(slots=True)

@@ -168,7 +168,10 @@ def test_adapter_reports_unsupported_sections_and_ik() -> None:
     source.show_ik_keys.append(VmdShowIkKey(0, True, (VmdIkState("custom_solver", True),)))
     diagnostics = Diagnostics()
     motion = to_source_motion(source, diagnostics)
-    assert {Code.UNSUPPORTED_MORPHS, Code.UNSUPPORTED_CAMERA} <= diagnostics.codes()
+    assert Code.UNSUPPORTED_CAMERA in diagnostics.codes()
+    # Morphs are carried through; whether they're used is decided by the mapping's rules.
+    assert motion.morphs["あ"].is_animated
+    np.testing.assert_array_equal(motion.morphs["あ"].weights, [1.0])
     assert motion.ik_bones == {"custom_solver"}  # the show/IK list is authoritative
     heuristic = to_source_motion(
         vmd(bone_key("左足ＩＫ", 0), bone_key("左足IK親", 0)), Diagnostics()

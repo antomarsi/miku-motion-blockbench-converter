@@ -68,12 +68,27 @@ class SourceBoneTrack:
         return self.rotates or self.translates
 
 
+@dataclass(frozen=True, slots=True, eq=False)
+class MorphTrack:
+    """A morph's weight over time: ``frames`` (K,) strictly increasing, ``weights`` (K,).
+    Weights are interpolated linearly between keys and held outside them."""
+
+    name: str
+    frames: FloatArray
+    weights: FloatArray
+
+    @property
+    def is_animated(self) -> bool:
+        return bool(np.any(np.abs(self.weights) > 1e-3))
+
+
 @dataclass(slots=True)
 class SourceMotion:
     name: str
     frame_rate: float
     end_frame: int
     tracks: dict[str, SourceBoneTrack] = field(default_factory=dict)
+    morphs: dict[str, MorphTrack] = field(default_factory=dict)  # facial expressions etc.
     ik_bones: frozenset[str] = frozenset()  # bones whose motion reaches others only via IK
     # IK on/off switches over time: bone -> ((frame, enabled), ...) sorted by frame.
     ik_states: dict[str, tuple[tuple[int, bool], ...]] = field(default_factory=dict)

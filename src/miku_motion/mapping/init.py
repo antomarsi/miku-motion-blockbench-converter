@@ -8,6 +8,7 @@ body's rotation cancelled; MMD's waist-cancel node becomes the waist bone with w
 
 import json
 import math
+import re
 from importlib import resources
 from typing import Any
 
@@ -137,6 +138,7 @@ def generate_mapping(
         "ignore": data["ignore"],
         "bones": bones,
         "secondary_motion": [{"bones": list(s.bones), "preset": s.preset} for s in suggestions],
+        "morphs": face_rules(skeleton, roles),
     }
 
 
@@ -146,10 +148,93 @@ def render_mapping(mapping: dict[str, Any]) -> str:
     def line(value: Any) -> str:
         return json.dumps(value, ensure_ascii=False, separators=(", ", ": "))
 
-    head = {k: v for k, v in mapping.items() if k not in ("bones", "secondary_motion")}
+    lists = ("bones", "secondary_motion", "morphs")
+    head = {k: v for k, v in mapping.items() if k not in lists}
     lines = ["{"] + [f"  {line(k)}: {line(v)}," for k, v in head.items()]
     bone_lines = [f"    {line(k)}: {line(v)}" for k, v in mapping["bones"].items()]
     lines += ['  "bones": {', ",\n".join(bone_lines), "  },"]
     chain_lines = [f"    {line(c)}" for c in mapping["secondary_motion"]]
-    lines += ['  "secondary_motion": [', ",\n".join(chain_lines), "  ]", "}"]
+    lines += ['  "secondary_motion": [', ",\n".join(chain_lines), "  ],"]
+    morph_lines = [f"    {line(r)}" for r in mapping.get("morphs", [])]
+    lines += ['  "morphs": [', ",\n".join(morph_lines), "  ]", "}"]
     return "\n".join(lines) + "\n"
+
+
+# --- face ---------------------------------------------------------------------------------
+
+
+def _face_data() -> dict[str, Any]:
+    text = (resources.files("miku_motion.data") / "face_morphs.json").read_text("utf-8")
+    result: dict[str, Any] = json.loads(text)
+    return result
+
+
+def _name_tokens(name: str) -> list[str]:
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", " ", name)
+    return [t.lower() for t in re.split(r"[^A-Za-z0-9]+", spaced) if t]
+
+
+def face_rules(skeleton: Skeleton, roles: Roles) -> list[dict[str, Any]]:
+    """Morph rules for face bones found inside the head, from their names.
+
+    - eyelids (``eyelid``/``lid``): close with blinks, smiles and their side's wink
+    - an eyes group (``eyes``): squashes for blinks; single eyes (``eye``): their wink,
+      and blinks too when there's no eyes group
+    - mouth shapes (``mouth_a`` .. ``mouth_o``, ``mouth_closed``): swapped by the vowels
+    - a single mouth: scaled by each vowel
+    Sides come from the bone's pivot (the model's left is -X), not its name.
+    """
+    if roles.head is None:
+        return []
+    data = _face_data()
+    skip = set(data["skip_tokens"])
+    head_parts = [b for b in skeleton if roles.head in {a.name for a in skeleton.ancestors(b.name)}]
+    closed: list[str] = data["eyes_closed"]
+    vowels: dict[str, list[str]] = data["vowels"]
+    threshold = data["swap_threshold"]
+
+    def side(name: str) -> str:
+        return "left" if skeleton[name].pivot[0] < 0 else "right"
+
+    eyelids: list[str] = []
+    eye_groups: list[str] = []
+    eyes: list[str] = []
+    mouth_shapes: dict[str, str] = {}
+    mouths: list[str] = []
+    for bone in head_parts:
+        tokens = _name_tokens(bone.name)
+        if skip & set(tokens):
+            continue
+        if "eyelid" in tokens or "lid" in tokens:
+            eyelids.append(bone.name)
+        elif "eyes" in tokens:
+            eye_groups.append(bone.name)
+        elif "eye" in tokens:
+            eyes.append(bone.name)
+        elif "mouth" in tokens:
+            shape = next((t for t in tokens if t in vowels or t in ("closed", "close")), None)
+            if shape:
+                mouth_shapes[bone.name] = "closed" if shape.startswith("clos") else shape
+            else:
+                mouths.append(bone.name)
+
+    rules: list[dict[str, Any]] = []
+    for name in eyelids:
+        morphs = closed + data[f"wink_{side(name)}"]
+        rules.append({"morph": morphs, "bone": name, "scale_from": [1, 0, 1], "scale": [1, 1, 1]})
+    for name in eye_groups:
+        rules.append({"morph": closed, "bone": name, "scale": data["eye_squash"]})
+    for name in eyes:
+        morphs = data[f"wink_{side(name)}"] + ([] if eye_groups else closed)
+        rules.append({"morph": morphs, "bone": name, "scale": data["eye_squash"]})
+    all_vowels = [m for names in vowels.values() for m in names]
+    for name, shape in mouth_shapes.items():
+        if shape == "closed":
+            rules.append({"morph": all_vowels, "bone": name, "hide_above": threshold})
+        else:
+            rules.append({"morph": vowels[shape], "bone": name, "show_above": threshold})
+    if not mouth_shapes:
+        for name in mouths:
+            for vowel, scale in data["mouth_scale"].items():
+                rules.append({"morph": vowels[vowel], "bone": name, "scale": scale})
+    return [{**r, "morph": r["morph"][0] if len(r["morph"]) == 1 else r["morph"]} for r in rules]

@@ -9,7 +9,7 @@ from collections import defaultdict
 
 import numpy as np
 
-from miku_motion.animation.source import SourceBoneTrack, SourceMotion
+from miku_motion.animation.source import MorphTrack, SourceBoneTrack, SourceMotion
 from miku_motion.diagnostics import Code, Diagnostics
 from miku_motion.vmd import interpolation
 from miku_motion.vmd.names import canonical_bone_name
@@ -74,17 +74,25 @@ def to_source_motion(vmd: VmdFile, diagnostics: Diagnostics) -> SourceMotion:
         ik_bones=frozenset(ik_bones),
         canonical_name=canonical_bone_name,
         ik_states={name: tuple(states) for name, states in sorted(ik_states.items())},
+        morphs=_morph_tracks(vmd),
     )
 
 
-def _report_unsupported(vmd: VmdFile, diagnostics: Diagnostics) -> None:
-    if vmd.morph_keys:
-        morphs = len({k.name for k in vmd.morph_keys})
-        diagnostics.warn(
-            Code.UNSUPPORTED_MORPHS,
-            f"{len(vmd.morph_keys)} morph keyframes across {morphs} morphs (facial "
-            "animation) are not converted",
+def _morph_tracks(vmd: VmdFile) -> dict[str, MorphTrack]:
+    by_morph: dict[str, dict[int, float]] = defaultdict(dict)
+    for key in vmd.morph_keys:  # file order; a later key for the same frame wins
+        by_morph[canonical_bone_name(key.name)][key.frame] = key.weight
+    return {
+        name: MorphTrack(
+            name,
+            np.array(sorted(keys), dtype=np.float64),
+            np.array([keys[f] for f in sorted(keys)], dtype=np.float64),
         )
+        for name, keys in sorted(by_morph.items())
+    }
+
+
+def _report_unsupported(vmd: VmdFile, diagnostics: Diagnostics) -> None:
     for count, code, what in (
         (vmd.camera_key_count, Code.UNSUPPORTED_CAMERA, "camera"),
         (vmd.light_key_count, Code.UNSUPPORTED_LIGHT, "light"),

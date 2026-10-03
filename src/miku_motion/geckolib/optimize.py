@@ -34,6 +34,7 @@ DEFAULT_POSITION_TOLERANCE = 0.05  # pixels
 class Tolerance:
     rotation_degrees: float = DEFAULT_ROTATION_TOLERANCE
     position: float = DEFAULT_POSITION_TOLERANCE  # pixels
+    scale: float = 0.01  # fraction of the bone's size
 
 
 @dataclass(frozen=True, slots=True, eq=False)

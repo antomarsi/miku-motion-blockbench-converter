@@ -51,3 +51,14 @@ def position_channel(translations: FloatArray) -> FloatArray:
     """Keyframe values (pixels, ``(N, 3)``) for canonical parent-frame offsets."""
     result: FloatArray = np.asarray(translations, dtype=np.float64) * POSITION_SIGNS
     return result
+
+
+def rotation_delta_from_channel(values: FloatArray) -> FloatArray:
+    """Canonical rotations for rotation keyframe values given without a rest pose."""
+    return euler.to_quat(np.radians(np.asarray(values, dtype=np.float64) * ROTATION_SIGNS))
+
+
+def position_from_channel(values: FloatArray) -> FloatArray:
+    """Canonical offsets for position keyframe values (the inverse of ``position_channel``)."""
+    result: FloatArray = np.asarray(values, dtype=np.float64) * POSITION_SIGNS
+    return result

@@ -158,3 +158,31 @@ def test_generator_reproduces_the_committed_files(
     module.main()
     for name in TEMPLATE_FILES:
         assert (tmp_path / name).read_bytes() == (ROOT / "templates" / name).read_bytes(), name
+
+
+def test_template_face_follows_morphs(tmp_path: Path) -> None:
+    from miku_motion.vmd.types import VmdMorphKey
+
+    motion = tmp_path / "sing.vmd"
+    motion.write_bytes(
+        write_vmd(
+            vmd(
+                bone_key("頭", 0),
+                bone_key("頭", 30),
+                morphs=(
+                    VmdMorphKey("まばたき", 0, 0.0),
+                    VmdMorphKey("まばたき", 30, 1.0),
+                    VmdMorphKey("あ", 0, 0.0),
+                    VmdMorphKey("あ", 30, 1.0),
+                ),
+            )
+        )
+    )
+    result = convert(motion, TEMPLATE, MAPPING, ConvertOptions(fps=10))
+    bones = next(iter(json.loads(result.text)["animations"].values()))["bones"]
+    assert bones["eyelid_left"]["scale"]["0.0"] == [1, 0, 1]  # open ...
+    assert bones["eyelid_left"]["scale"]["1.0"] == [1, 1, 1]  # ... closed
+    assert bones["mouth_a"]["scale"]["0.0"] == [0, 0, 0]  # hidden until あ passes 0.5
+    assert bones["mouth_a"]["scale"]["1.0"] == [1, 1, 1]
+    assert bones["mouth_closed"]["scale"]["1.0"] == [0, 0, 0]
+    assert "MM108" in {d.code.value for d in result.diagnostics.items}

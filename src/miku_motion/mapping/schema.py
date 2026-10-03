@@ -84,6 +84,40 @@ class SecondaryMotionSpec(_Strict):
         return self
 
 
+class MorphRule(_Strict):
+    """How a source morph (facial expression) moves a target bone.
+
+    The morph's weight (0..1; the strongest one when several are listed) drives exactly
+    one effect. Rotation and position use the values Blockbench displays.
+    """
+
+    morph: str | list[str]
+    bone: str = Field(min_length=1)
+    scale: tuple[float, float, float] | None = None  # reached at weight 1 ...
+    scale_from: tuple[float, float, float] = (1.0, 1.0, 1.0)  # ... from this at weight 0
+    position: tuple[float, float, float] | None = None  # px offset at weight 1
+    rotation: tuple[float, float, float] | None = None  # degrees at weight 1
+    show_above: float | None = Field(default=None, ge=0, le=1)  # visible only past this
+    hide_above: float | None = Field(default=None, ge=0, le=1)  # hidden past this
+
+    @model_validator(mode="after")
+    def _one_effect(self) -> "MorphRule":
+        effects = [self.scale, self.position, self.rotation, self.show_above, self.hide_above]
+        if sum(e is not None for e in effects) != 1:
+            raise ValueError(
+                "set exactly one of scale, position, rotation, show_above or hide_above"
+            )
+        if self.scale is None and self.scale_from != (1.0, 1.0, 1.0):
+            raise ValueError("scale_from only goes with scale")
+        if not self.morphs:
+            raise ValueError("name at least one morph")
+        return self
+
+    @property
+    def morphs(self) -> list[str]:
+        return [self.morph] if isinstance(self.morph, str) else list(self.morph)
+
+
 class Units(_Strict):
     translation_scale: float = Field(default=1.0, gt=0)  # target units per source unit
 
@@ -97,6 +131,7 @@ class MappingFile(_Strict):
     ignore: list[str] = Field(default_factory=list)
     bones: dict[str, str | BoneEntry]
     secondary_motion: list[SecondaryMotionSpec] = Field(default_factory=list)
+    morphs: list[MorphRule] = Field(default_factory=list)  # facial animation
 
     @field_validator("bones")
     @classmethod

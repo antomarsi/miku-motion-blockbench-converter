@@ -60,6 +60,17 @@ PINK: RGB = (255, 140, 170)
 EYE_WHITE: RGB = (250, 252, 255)
 EYE: RGB = (40, 150, 170)
 MOUTH: RGB = (214, 130, 120)
+MOUTH_OPEN: RGB = (150, 60, 72)
+LASH: RGB = (40, 42, 52)
+# Mouth shapes on a 4x2 plate: (row, first column, last column + 1, colour).
+MOUTHS: dict[str, list[tuple[int, int, int, RGB]]] = {
+    "closed": [(0, 1, 3, MOUTH)],
+    "a": [(0, 0, 4, MOUTH_OPEN), (1, 1, 3, MOUTH_OPEN)],
+    "i": [(0, 0, 4, MOUTH)],
+    "u": [(0, 1, 3, MOUTH_OPEN)],
+    "e": [(0, 0, 4, MOUTH_OPEN), (1, 1, 3, MOUTH)],
+    "o": [(0, 1, 3, MOUTH_OPEN), (1, 1, 3, MOUTH_OPEN)],
+}
 
 
 # --- UV layout ------------------------------------------------------------------------------
@@ -314,6 +325,33 @@ def extras() -> list[Extra]:
         Extra("skirt_back", "hips", (0, 13, 2), (-4.5, 7, 2), (4.5, 13, 2.5), "dark", "trim"),
         Extra("tie", "chest", (0, 23, -2.25), (-1, 19, -2.5), (1, 23, -2), "teal"),
         Extra("tie_end", "tie", (0, 19, -2.25), (-1, 15, -2.5), (1, 19, -2), "teal"),
+        # Face plates just in front of the Minecraft face (z = -4), behind the hat layer.
+        # Eyelids pivot at their top edge and scale down over the eyes; the mouth shapes
+        # are swapped by the vowels.
+        Extra(
+            "eyelid_left",
+            "face",
+            (-2, 28, -4.03),
+            (-3, 26, -4.03),
+            (-1, 28, -4.02),
+            "skin",
+            "eyelid",
+        ),
+        Extra(
+            "eyelid_right", "face", (2, 28, -4.03), (1, 26, -4.03), (3, 28, -4.02), "skin", "eyelid"
+        ),
+        *(
+            Extra(
+                f"mouth_{shape}",
+                "face",
+                (0, 25, -4.03),
+                (-2, 24, -4.03),
+                (2, 26, -4.02),
+                "skin",
+                f"mouth_{shape}",
+            )
+            for shape in ("closed", "a", "i", "u", "e", "o")
+        ),
     ]
 
 
@@ -323,6 +361,7 @@ EXTRA_GROUPS = [  # cube-less groups that organise the hair styles
     ("ponytail", "hair", (0, 29, 4.5)),
     ("long_hair", "hair", (0, 26, 4.75)),
     ("short_hair", "hair", (0, 28, 0)),
+    ("face", "head", (0, 27, -4)),
 ]
 
 
@@ -455,8 +494,18 @@ def paint_player(image: Image.Image, arm: int = 4) -> None:
 
 
 def paint_extra(image: Image.Image, item: Extra, faces: dict[str, list[float]]) -> None:
+    face_plate = item.details == "eyelid" or item.details.startswith("mouth_")
     for name, uv in faces.items():
-        x0, y0, x1, y1 = fill(image, uv, item.material)
+        x0, y0, x1, y1 = fill(image, uv, item.material, outline=not face_plate)
+        if face_plate:
+            if name != "north":
+                continue
+            if item.details == "eyelid":
+                row(image, x0, x1, y1 - 1, LASH)  # lash line at the bottom of the lid
+            else:
+                for line, start, end, color in MOUTHS[item.details.removeprefix("mouth_")]:
+                    row(image, x0 + start, x0 + end, y0 + line, color)
+            continue
         if name in ("up", "down"):
             continue
         if item.details == "trim":
