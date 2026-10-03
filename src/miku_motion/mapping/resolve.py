@@ -175,7 +175,10 @@ def _report(
             tuple(dropped),
         )
 
-    unbound = [b for b in skeleton.names if b not in {x.target for x in resolved.bindings}]
+    driven = {x.target for x in resolved.bindings} | {
+        b for chain in mapping.secondary_motion for b in chain.bones
+    }
+    unbound = [b for b in skeleton.names if b not in driven]
     if unbound:
         diagnostics.info(
             Code.UNMAPPED_TARGET_BONES,

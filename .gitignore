@@ -10,6 +10,9 @@
 !/tests/**/*.vmd
 !/tests/**/*.bbmodel
 !/docs/**/*.png
+# The template model and its skin are ours and meant to be shared.
+!/templates/*.bbmodel
+!/templates/*.png
 
 # Conversion outputs produced while experimenting
 /out/

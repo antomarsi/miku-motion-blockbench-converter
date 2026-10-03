@@ -28,14 +28,15 @@ class Preset:
     stiffness: float  # 1/s^2
     bounciness: float  # 0 = settles without overshoot, 1 = keeps bouncing
     gravity: float
+    max_angle: float  # degrees a segment may swing from its resting direction
 
 
 PRESETS: dict[str, Preset] = {
-    "long_hair": Preset(stiffness=40.0, bounciness=0.5, gravity=1.0),
-    "ponytail": Preset(stiffness=60.0, bounciness=0.55, gravity=1.0),
-    "short_hair": Preset(stiffness=160.0, bounciness=0.3, gravity=0.6),
-    "cloth": Preset(stiffness=90.0, bounciness=0.35, gravity=1.0),
-    "accessory": Preset(stiffness=70.0, bounciness=0.7, gravity=1.0),
+    "long_hair": Preset(stiffness=40.0, bounciness=0.5, gravity=1.0, max_angle=100.0),
+    "ponytail": Preset(stiffness=60.0, bounciness=0.55, gravity=1.0, max_angle=90.0),
+    "short_hair": Preset(stiffness=160.0, bounciness=0.3, gravity=0.6, max_angle=45.0),
+    "cloth": Preset(stiffness=90.0, bounciness=0.35, gravity=1.0, max_angle=60.0),
+    "accessory": Preset(stiffness=70.0, bounciness=0.7, gravity=1.0, max_angle=75.0),
 }
 DEFAULT_PRESET = "long_hair"
 
@@ -45,21 +46,27 @@ def damping_for(stiffness: float, bounciness: float) -> float:
     return 2.0 * math.sqrt(stiffness) * (1.0 - bounciness)
 
 
-def geometry_tip(bone: Bone) -> FloatArray | None:
-    """Where the bone's cubes end, looking from its pivot through their centre."""
+def geometry_tip(bone: Bone, origin: FloatArray | None = None) -> FloatArray | None:
+    """Where the bone's cubes end: the centre of their bounding box's face farthest from
+    ``origin`` (default: the bone's pivot). Pass the chain's first pivot for multi-bone
+    chains: a short last piece (a 2 px hand) may be wider than tall, so measured from
+    its own pivot a side face could look farthest."""
     if bone.extent is None:
         return None
     low, high = bone.extent
     center = 0.5 * (low + high)
-    half = 0.5 * (high - low)
-    direction = center - bone.pivot
-    length = float(np.linalg.norm(direction))
-    if length < 1e-6:
+    faces = []
+    for axis in range(3):
+        for bound in (low[axis], high[axis]):
+            face = center.copy()
+            face[axis] = bound
+            faces.append(face)
+    start = bone.pivot if origin is None else origin
+    distances = [float(np.linalg.norm(face - start)) for face in faces]
+    best = int(np.argmax(distances))
+    if distances[best] < 1e-6:
         return None
-    unit = direction / length
-    along = np.abs(unit)
-    exits = np.divide(half, along, out=np.full(3, np.inf), where=along > 1e-9)
-    tip: FloatArray = center + unit * float(np.min(exits))
+    tip: FloatArray = faces[best]
     return tip
 
 
@@ -68,7 +75,7 @@ def _tip(
 ) -> FloatArray:
     if spec.tip is not None:
         return np.array(spec.tip, dtype=float)
-    from_geometry = geometry_tip(skeleton[spec.bones[-1]])
+    from_geometry = geometry_tip(skeleton[spec.bones[-1]], skeleton[spec.bones[0]].pivot)
     if from_geometry is not None:
         return from_geometry
     pivots = [skeleton[b].pivot for b in spec.bones]
@@ -136,6 +143,7 @@ def resolve_secondary(
                 damping,
                 spec.gravity if spec.gravity is not None else preset.gravity,
                 np.array(spec.offset, dtype=float),
+                spec.max_angle if spec.max_angle is not None else preset.max_angle,
             )
         )
     return chains
@@ -181,6 +189,37 @@ def _preset_for(name: str, keywords: list[tuple[str, list[str]]]) -> str | None:
 
 
 LONG_HAIR_LENGTH = 12.0  # px; longer hair chains swing like long hair whatever their name
+MIN_CHAIN_LENGTH = 2.0  # px; shorter pieces are decoration, too small to swing visibly
+
+
+def _is_overlay(skeleton: Skeleton, bone: Bone) -> bool:
+    """Cubes mostly inside the parent's (a sleeve or shirt layer), not a dangling part."""
+    parent = skeleton[bone.parent] if bone.parent else None
+    if parent is None or parent.extent is None or bone.extent is None:
+        return False
+    own = float(np.prod(np.maximum(bone.extent[1] - bone.extent[0], 0.0)))
+    low = np.maximum(bone.extent[0], parent.extent[0])
+    high = np.minimum(bone.extent[1], parent.extent[1])
+    shared = float(np.prod(np.maximum(high - low, 0.0)))
+    return own > 0 and shared >= 0.5 * own
+
+
+def _wraps_parent(skeleton: Skeleton, bone: Bone) -> bool:
+    """Cubes around the parent's (a cuff, bracelet or collar): it can't swing without
+    passing through the parent, so it must stay rigid."""
+    parent = skeleton[bone.parent] if bone.parent else None
+    if parent is None or parent.extent is None or bone.extent is None:
+        return False
+    tolerance = 1e-6
+    around = all(
+        bone.extent[0][axis] <= parent.extent[0][axis] + tolerance
+        and bone.extent[1][axis] >= parent.extent[1][axis] - tolerance
+        for axis in (0, 2)  # encloses the parent sideways
+    )
+    shared_height = min(bone.extent[1][1], parent.extent[1][1]) - max(
+        bone.extent[0][1], parent.extent[0][1]
+    )
+    return around and shared_height > tolerance
 
 
 def suggest_chains(skeleton: Skeleton, mapping: MappingFile) -> list[Suggestion]:
@@ -188,7 +227,9 @@ def suggest_chains(skeleton: Skeleton, mapping: MappingFile) -> list[Suggestion]
 
     A chain starts at a bone with a hair/cloth-like name (or below one) that isn't
     driven by the motion, and follows single children down to a leaf. Only bones with
-    their own cubes are included, so pure grouping nodes don't become physics.
+    their own cubes are included, so pure grouping nodes don't become physics, and
+    overlays (cubes mostly inside the parent's, like a tight sleeve) and wrapping pieces
+    (around the parent, like a cuff) stay rigid: they'd clip through it if they swung.
     """
     keywords = _keyword_presets()
     taken = set(mapping.bones) | {b for chain in mapping.secondary_motion for b in chain.bones}
@@ -196,6 +237,8 @@ def suggest_chains(skeleton: Skeleton, mapping: MappingFile) -> list[Suggestion]
     claimed: set[str] = set()
     for bone in skeleton:
         if bone.name in taken or bone.name in claimed or bone.extent is None:
+            continue
+        if _is_overlay(skeleton, bone) or _wraps_parent(skeleton, bone):
             continue
         lineage = [bone.name, *(a.name for a in skeleton.ancestors(bone.name))]
         preset = next((p for n in lineage if (p := _preset_for(n, keywords))), None)
@@ -207,15 +250,20 @@ def suggest_chains(skeleton: Skeleton, mapping: MappingFile) -> list[Suggestion]
             children = [c for c in skeleton.children(chain[-1]) if c.extent is not None]
             if len(children) != 1 or children[0].name in taken:
                 break
+            if np.allclose(children[0].pivot, skeleton[chain[-1]].pivot):
+                break  # an overlay sharing the joint, not a further segment
+            if _is_overlay(skeleton, children[0]) or _wraps_parent(skeleton, children[0]):
+                break
             chain.append(children[0].name)
-        tip = geometry_tip(skeleton[chain[-1]])
+        tip = geometry_tip(skeleton[chain[-1]], skeleton[chain[0]].pivot)
         if tip is None and len(chain) < 2:
             continue
-        if preset == "short_hair":
-            points = [*(skeleton[b].pivot for b in chain), *([tip] if tip is not None else [])]
-            length = sum(float(np.linalg.norm(b - a)) for a, b in pairwise(points))
-            if len(chain) >= 3 or length >= LONG_HAIR_LENGTH:
-                preset = "long_hair"
+        points = [*(skeleton[b].pivot for b in chain), *([tip] if tip is not None else [])]
+        length = sum(float(np.linalg.norm(b - a)) for a, b in pairwise(points))
+        if length < MIN_CHAIN_LENGTH:
+            continue
+        if preset == "short_hair" and (len(chain) >= 3 or length >= LONG_HAIR_LENGTH):
+            preset = "long_hair"
         claimed.update(chain)
         suggestions.append(Suggestion(tuple(chain), preset))
     return suggestions

@@ -21,8 +21,13 @@ from miku_motion.geckolib.optimize import (
     DEFAULT_ROTATION_TOLERANCE,
     Tolerance,
 )
+from miku_motion.mapping.init import generate_mapping, render_mapping
 from miku_motion.mapping.schema import MappingFile, load_mapping
 from miku_motion.mapping.secondary import suggest_chains
+from miku_motion.model.document import BbmodelDocument
+from miku_motion.model.prepare import PrepareOptions, prepare
+from miku_motion.model.roles import detect_roles
+from miku_motion.model.skin import make_skinned_model
 from miku_motion.pipeline import DEFAULT_FPS, OPTIMIZED_FPS, ConvertOptions, convert
 from miku_motion.rig.schema import DEFAULT_SKELETON
 from miku_motion.vmd import synth
@@ -140,22 +145,6 @@ def convert_command(
         str | None, typer.Option(help="Animation name. Default: animation.<model>.<motion>")
     ] = None,
     loop: Annotated[LoopMode, typer.Option(help="GeckoLib loop mode.")] = LoopMode.ONCE,
-    audio: Annotated[
-        Path | None,
-        typer.Option(
-            exists=True,
-            dir_okay=False,
-            help="Music (.ogg) to start on the first frame via a sound keyframe; its length "
-            "is checked against the motion.",
-        ),
-    ] = None,
-    sound: Annotated[
-        str | None,
-        typer.Option(
-            help="Sound effect id for that keyframe. Default: <model mod id>:<audio name>. "
-            "Can be used without --audio."
-        ),
-    ] = None,
     source_skeleton: Annotated[
         str,
         typer.Option(
@@ -173,8 +162,6 @@ def convert_command(
         tolerance=Tolerance(rotation_tolerance, position_tolerance) if optimize else None,
         name=name,
         loop=loop,
-        audio=audio,
-        sound=sound,
         source_skeleton=source_skeleton if ik else None,
     )
     try:
@@ -195,8 +182,6 @@ def convert_command(
         f"{len(animation.times)} samples @ {sample_rate:g} fps, {animation.length:.2f} s)",
         soft_wrap=True,
     )
-    for cue in animation.sounds:
-        console.print(f"  sound keyframe at {cue.time:g} s: {cue.effect}")
 
 
 @app.command(name="inspect-model")
@@ -248,6 +233,100 @@ def inspect_model(
         bones = json.dumps(list(suggestion.bones), ensure_ascii=False)
         lines.append(f'    {{ "bones": {bones}, "preset": "{suggestion.preset}" }}')
     typer.echo('  "secondary_motion": [\n' + ",\n".join(lines) + "\n  ]")
+
+
+@app.command(name="prepare-model")
+def prepare_model(
+    model: ExistingFile,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Default: <model>.prepared.bbmodel"),
+    ] = None,
+    check: Annotated[bool, typer.Option("--check", help="Only report; write nothing.")] = False,
+    split_limbs: Annotated[
+        bool, typer.Option(help="Split one-piece arms/legs at the joint.")
+    ] = True,
+    hair_ik: Annotated[bool, typer.Option(help="Add Blockbench IK to hair/cloth chains.")] = True,
+    limb_ik: Annotated[bool, typer.Option(help="Add Blockbench IK to arms and legs.")] = True,
+) -> None:
+    """Make a model ready for dancing: fix its rig and add Blockbench IK (writes a copy)."""
+    destination = output or model.with_name(f"{model.stem}.prepared.bbmodel")
+    if destination.resolve() == model.resolve():
+        raise _fail(MikuMotionError("refusing to overwrite the input model", path=model))
+    try:
+        document = BbmodelDocument.load(model)
+        findings, final = prepare(document, model, PrepareOptions(split_limbs, hair_ik, limb_ik))
+    except MikuMotionError as error:
+        raise _fail(error) from error
+    except (KeyError, ValueError) as error:
+        raise _fail(MikuMotionError(f"cannot read the model: {error}", path=model)) from error
+
+    if not findings:
+        console.print("The model is ready: nothing to change.")
+    for finding in findings:
+        status = "[green]fixed[/]" if finding.fixed else "[yellow]to do[/]"
+        console.print(f"  {status}  {finding.message}", soft_wrap=True)
+    roles = ", ".join(f"{role}={bone}" for role, bone in final.roles.by_role().items())
+    console.print(f"\n[bold]Body parts:[/] {roles}", soft_wrap=True)
+    if check or not any(f.fixed for f in findings):
+        return
+    document.save(destination)
+    console.print(f"[green]wrote[/] {destination} (the original is unchanged)")
+
+
+@app.command(name="init-mapping")
+def init_mapping(
+    model: ExistingFile,
+    output: Annotated[
+        Path | None, typer.Option("--output", "-o", dir_okay=False, help="Default: print it.")
+    ] = None,
+    force: Annotated[bool, typer.Option(help="Overwrite an existing output file.")] = False,
+) -> None:
+    """Generate a starter mapping from the model's detected body parts and hair."""
+    try:
+        target = read_bbmodel(model)
+    except MikuMotionError as error:
+        raise _fail(error) from error
+    suggestions = suggest_chains(target.skeleton, MappingFile(bones={"": ""}))
+    roles = detect_roles(target.skeleton, {b for s in suggestions for b in s.bones})
+    if not roles.by_role():
+        raise _fail(MikuMotionError("couldn't recognise any body parts", path=model))
+    text = render_mapping(generate_mapping(target.skeleton, roles, suggestions, target.name))
+    if output is None:
+        typer.echo(text, nl=False)
+        return
+    if output.exists() and not force:
+        raise _fail(MikuMotionError("already exists; pass --force to overwrite", path=output))
+    output.write_text(text, encoding="utf-8", newline="\n")
+    console.print(f"[green]wrote[/] {output}")
+
+
+@app.command(name="apply-skin")
+def apply_skin_command(
+    skin: ExistingFile,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", dir_okay=False, help="Default: <skin>.bbmodel"),
+    ] = None,
+    templates: Annotated[
+        Path, typer.Option(file_okay=False, help="Folder with template(_slim).bbmodel.")
+    ] = Path("templates"),
+    arms: Annotated[
+        str, typer.Option(help="auto (detect from the skin), classic (4 px) or slim (3 px).")
+    ] = "auto",
+) -> None:
+    """Make a ready-to-dance model wearing a Minecraft skin (64x64, or legacy 64x32)."""
+    if arms not in ("auto", "classic", "slim"):
+        raise _fail(MikuMotionError("--arms must be auto, classic or slim"))
+    destination = output or skin.with_suffix(".bbmodel")
+    try:
+        model, texture, slim = make_skinned_model(skin, templates, destination, arms)
+    except MikuMotionError as error:
+        raise _fail(error) from error
+    kind = "slim (3 px)" if slim else "classic (4 px)"
+    console.print(f"[green]wrote[/] {model} and {texture} ({kind} arms)")
+    mapping = "mappings/template_slim.json" if slim else "mappings/template.json"
+    console.print(f"  use it with: miku-motion convert dance.vmd -t {model} -m {mapping}")
 
 
 def _print_diagnostics(diagnostics: Diagnostics) -> None:

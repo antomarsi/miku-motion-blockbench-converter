@@ -75,6 +75,7 @@ class SecondaryMotionSpec(_Strict):
     damping: float | None = Field(default=None, ge=0)  # advanced: instead of bounciness
     gravity: float | None = Field(default=None, ge=0)  # 1 = real gravity at Minecraft scale
     offset: tuple[float, float, float] = (0.0, 0.0, 0.0)  # px; rest shift of the tip (+Z = back)
+    max_angle: float | None = Field(default=None, gt=0, le=180)  # max swing, degrees
 
     @model_validator(mode="after")
     def _one_damping_setting(self) -> "SecondaryMotionSpec":

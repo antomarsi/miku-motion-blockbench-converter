@@ -25,11 +25,17 @@ def test_no_cjk_in_source() -> None:
     assert not offenders, f"MMD bone names must live in mapping files, found in: {offenders}"
 
 
+def _role_names() -> set[str]:
+    """Body-part identifiers are the converter's own vocabulary, not one rig's names."""
+    roles = json.loads((SRC / "data" / "mmd_roles.json").read_text(encoding="utf-8"))["roles"]
+    return set(roles)
+
+
 def _mapped_target_names() -> set[str]:
     names: set[str] = set()
     for mapping in MAPPINGS.glob("*.json"):
         names.update(json.loads(mapping.read_text(encoding="utf-8")).get("bones", {}))
-    return names
+    return names - _role_names()
 
 
 def test_no_target_bone_names_in_source() -> None:

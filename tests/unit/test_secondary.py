@@ -246,3 +246,19 @@ def test_suggestions_skip_bones_already_in_use() -> None:
 def test_token_split() -> None:
     assert _tokens("SquareHair_Right2") == ["square", "hair", "right", "2"]
     assert _tokens("TwinTail1 L") == ["twin", "tail", "1", "l"]
+
+
+def test_pieces_wrapping_their_parent_stay_rigid() -> None:
+    """A cuff around the forearm would clip through it if it swung (regression)."""
+    skeleton = parse_bbmodel(
+        bbmodel(
+            group("Head", None, (0, 24, 0), cube=((-4, 24, -4), (4, 32, 4))),
+            group("Forearm", "Head", (-6, 18, 0), cube=((-8, 14, -2), (-4, 18, 2))),
+            group("Sleeve", "Forearm", (-6, 16, 0), cube=((-8.5, 11, -2.5), (-3.5, 16, 2.5))),
+            group("Ribbon", "Forearm", (-6, 14, 2), cube=((-6.5, 9, 2), (-5.5, 14, 2.5))),
+        ),
+        Path("rig.bbmodel"),
+    ).skeleton
+    chains = {s.bones for s in suggest_chains(skeleton, MappingFile(bones={"Head": "頭"}))}
+    assert ("Sleeve",) not in chains  # wraps the forearm
+    assert ("Ribbon",) in chains  # hangs beside it

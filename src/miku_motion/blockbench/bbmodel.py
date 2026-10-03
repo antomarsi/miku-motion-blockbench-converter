@@ -32,7 +32,6 @@ class BlockbenchModel:
     format_version: str
     model_format: str
     skeleton: Skeleton
-    namespace: str | None = None  # the GeckoLib plugin's "mod id" setting, if any
 
     @property
     def is_geckolib(self) -> bool:
@@ -125,7 +124,6 @@ def parse_bbmodel(data: dict[str, Any], path: Path) -> BlockbenchModel:
         format_version=str(meta.get("format_version", "?")),
         model_format=str(meta.get("model_format", "?")),
         skeleton=Skeleton(tuple(bones)),
-        namespace=str(data["geckolib_modid"]) if data.get("geckolib_modid") else None,
     )
 
 

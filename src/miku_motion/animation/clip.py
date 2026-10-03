@@ -24,12 +24,6 @@ class BoneTrack:
     translations: FloatArray | None = None  # (N, 3) offset from rest, parent frame
 
 
-@dataclass(frozen=True, slots=True)
-class SoundCue:
-    time: float  # seconds
-    effect: str  # sound identifier, meaningful to the consumer (e.g. a GeckoLib mod)
-
-
 @dataclass(slots=True)
 class Animation:
     name: str
@@ -37,4 +31,3 @@ class Animation:
     length: float  # seconds
     loop: LoopMode = LoopMode.ONCE
     tracks: dict[str, BoneTrack] = field(default_factory=dict)
-    sounds: tuple[SoundCue, ...] = ()

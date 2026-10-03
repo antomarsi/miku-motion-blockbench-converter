@@ -2,7 +2,6 @@
 
 import json
 import math
-import struct
 from pathlib import Path
 from typing import Any
 
@@ -119,23 +118,3 @@ def player_rig(layout: int = 5) -> dict[str, Any]:
 def write_json(path: Path, data: Any) -> Path:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
-
-
-# --- audio ------------------------------------------------------------------------------------
-
-
-def _ogg_page(payload: bytes, granule: int, serial: int = 7, sequence: int = 0) -> bytes:
-    segments = [255] * (len(payload) // 255) + [len(payload) % 255]
-    header = struct.pack("<4sBBqIIIB", b"OggS", 0, 0, granule, serial, sequence, 0, len(segments))
-    return header + bytes(segments) + payload
-
-
-def ogg_vorbis(seconds: float, rate: int = 44_100, channels: int = 2) -> bytes:
-    """A structurally valid Ogg Vorbis stream (headers + end page, no real audio)."""
-    ident = b"\x01vorbis" + struct.pack("<IBI", 0, channels, rate) + bytes(13)
-    return _ogg_page(ident, 0) + _ogg_page(b"\x00" * 300, round(seconds * rate), sequence=1)
-
-
-def ogg_opus(seconds: float, pre_skip: int = 312) -> bytes:
-    head = b"OpusHead" + struct.pack("<BBHIhB", 1, 2, pre_skip, 48_000, 0, 0)
-    return _ogg_page(head, 0) + _ogg_page(b"\x00", round(seconds * 48_000) + pre_skip, sequence=1)

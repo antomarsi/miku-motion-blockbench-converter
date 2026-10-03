@@ -113,11 +113,6 @@ def build_document(
         "animation_length": format_number(animation.length),
         "bones": bones,
     }
-    if animation.sounds:
-        cues = {format_time(cue.time): {"effect": cue.effect} for cue in animation.sounds}
-        if len(cues) != len(animation.sounds):
-            raise ValueError("two sound cues share the same time")
-        clip["sound_effects"] = dict(sorted(cues.items(), key=lambda item: float(item[0])))
     return {
         "format_version": FORMAT_VERSION,
         "animations": {animation.name: clip},

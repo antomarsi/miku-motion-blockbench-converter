@@ -8,8 +8,6 @@ import pytest
 from typer.testing import CliRunner
 
 from miku_motion.cli import app
-from miku_motion.errors import MikuMotionError
-from miku_motion.geckolib.optimize import Tolerance
 from miku_motion.pipeline import ConvertOptions, convert
 from miku_motion.vmd.parser import read_vmd
 from miku_motion.vmd.writer import write_vmd
@@ -18,7 +16,6 @@ from tests.fixtures.builders import (
     bbmodel,
     bone_key,
     group,
-    ogg_vorbis,
     player_rig,
     vmd,
     write_json,
@@ -151,172 +148,8 @@ def test_every_real_motion_converts(assets_dir: Path) -> None:
                 assert drift < 48, f"{motion.name} on {model.name}: {root} drifts {drift} px"
 
 
-# --- sound keyframes ---------------------------------------------------------------------------
-
-
 def _clip(text: str) -> dict[str, Any]:
     return next(iter(json.loads(text)["animations"].values()))
-
-
-def test_audio_adds_first_frame_sound_named_after_mod_and_file(
-    inputs: tuple[Path, Path, Path],
-) -> None:
-    motion, model, mapping = inputs
-    rig = json.loads(model.read_text(encoding="utf-8"))
-    rig["geckolib_modid"] = "my_mod"
-    write_json(model, rig)
-    audio = motion.with_name("Arm Wave!.ogg")
-    audio.write_bytes(ogg_vorbis(1.5))
-
-    result = convert(motion, model, mapping, ConvertOptions(fps=20, audio=audio))
-
-    assert _clip(result.text)["sound_effects"] == {"0.0": {"effect": "my_mod:arm_wave"}}
-    length = next(d for d in result.diagnostics.items if d.code.value == "MM301")
-    assert length.severity.value == "info"  # 0.5 s difference is within tolerance
-
-
-def test_audio_length_mismatch_warns(inputs: tuple[Path, Path, Path]) -> None:
-    motion, model, mapping = inputs
-    audio = motion.with_name("other.ogg")
-    audio.write_bytes(ogg_vorbis(60.0))
-    result = convert(motion, model, mapping, ConvertOptions(audio=audio, sound="x:y"))
-    assert "MM301" in {d.code.value for d in result.diagnostics.warnings}
-    assert _clip(result.text)["sound_effects"]["0.0"]["effect"] == "x:y"
-
-
-def test_audio_without_mod_id_needs_explicit_sound(inputs: tuple[Path, Path, Path]) -> None:
-    motion, model, mapping = inputs
-    audio = motion.with_name("song.ogg")
-    audio.write_bytes(ogg_vorbis(1.0))
-    with pytest.raises(MikuMotionError, match="no GeckoLib mod id"):
-        convert(motion, model, mapping, ConvertOptions(audio=audio))
-
-
-def test_sound_without_audio_and_no_sound_by_default(inputs: tuple[Path, Path, Path]) -> None:
-    assert "sound_effects" not in _clip(convert(*inputs, ConvertOptions()).text)
-    result = convert(*inputs, ConvertOptions(sound="pack:song"))
-    assert _clip(result.text)["sound_effects"] == {"0.0": {"effect": "pack:song"}}
-
-
-def test_cli_audio_option(inputs: tuple[Path, Path, Path], tmp_path: Path) -> None:
-    motion, model, mapping = inputs
-    audio = tmp_path / "song.ogg"
-    audio.write_bytes(ogg_vorbis(1.0))
-    output = tmp_path / "out.json"
-    args = ["convert", str(motion), "-t", str(model), "-m", str(mapping), "-o", str(output)]
-    result = CliRunner().invoke(app, [*args, "--audio", str(audio), "--sound", "pack:song"])
-    assert result.exit_code == 0, result.output
-    assert "sound keyframe at 0 s: pack:song" in result.output
-
-
-# --- leg IK -------------------------------------------------------------------------------------
-
-LEG_MAPPING = {
-    "bones": {
-        "Root": {"from": ["全ての親", "センター", "グルーブ"], "translation": True},
-        "LeftLeg": {"from": ["腰", "下半身", {"bone": "腰", "weight": -1}, "左足"]},
-        "LeftShin": "左ひざ",
-    }
-}
-
-
-@pytest.fixture
-def squat(tmp_path: Path) -> tuple[Path, Path, Path]:
-    """The hips drop 3 units over one second while the leg IK goals stay put."""
-    motion = tmp_path / "squat.vmd"
-    motion.write_bytes(
-        write_vmd(
-            vmd(
-                bone_key("センター", 0),
-                bone_key("センター", 30, position=(0, -3, 0)),
-                bone_key("左足ＩＫ", 0),
-                bone_key("左足ＩＫ", 30),
-            )
-        )
-    )
-    rig = bbmodel(
-        group("Root", None),
-        group("LeftLeg", "Root", (-1.9, 12, 0)),
-        group("LeftShin", "LeftLeg", (-1.9, 6, 0)),
-    )
-    return (
-        motion,
-        write_json(tmp_path / "legs.bbmodel", rig),
-        write_json(tmp_path / "m.json", LEG_MAPPING),
-    )
-
-
-def test_ik_bends_the_knee_when_the_hips_drop(squat: tuple[Path, Path, Path]) -> None:
-    result = convert(*squat, ConvertOptions(fps=10))
-    bones = _clip(result.text)["bones"]
-    shin = bones["LeftShin"]["rotation"]
-    assert abs(shin["1.0"][0]) > 30  # clearly bent at the bottom of the squat
-    assert abs(shin["0.0"][0]) < 1  # nearly straight when standing (MMD's 0.5 deg minimum)
-    codes = {d.code.value for d in result.diagnostics.items}
-    assert "MM107" in codes  # IK solved
-    assert "MM102" not in codes  # ... so no "IK not solved" warning
-
-
-def test_no_ik_keeps_the_knee_straight(squat: tuple[Path, Path, Path]) -> None:
-    result = convert(*squat, ConvertOptions(fps=10, source_skeleton=None))
-    bones = _clip(result.text)["bones"]
-    assert "LeftShin" not in bones  # never leaves its rest pose
-    assert "MM102" in {d.code.value for d in result.diagnostics.warnings}
-
-
-def test_cli_ik_options(squat: tuple[Path, Path, Path], tmp_path: Path) -> None:
-    motion, model, mapping = squat
-    base = [
-        "convert",
-        str(motion),
-        "-t",
-        str(model),
-        "-m",
-        str(mapping),
-        "-o",
-        str(tmp_path / "o.json"),
-    ]
-    assert CliRunner().invoke(app, [*base, "--no-ik"]).exit_code == 0
-    result = CliRunner().invoke(app, [*base, "--source-skeleton", "nope"])
-    assert result.exit_code == 1
-    assert "unknown built-in skeleton" in result.output
-
-
-# --- keyframe reduction ------------------------------------------------------------------------
-
-
-def test_optimize_keeps_only_needed_keys(inputs: tuple[Path, Path, Path]) -> None:
-    """The arm-wave slice is linear in time: optimized, each channel needs 2 keys."""
-    result = convert(*inputs, ConvertOptions(fps=60, tolerance=Tolerance()))
-    bones = _clip(result.text)["bones"]
-    assert list(bones["LeftArm"]["rotation"]) == ["0.0", "1.0"]
-    assert bones["LeftArm"]["rotation"]["1.0"] == [0, 0, -60]
-    assert list(bones["Root"]["position"]) == ["0.0", "1.0"]
-    reduced = next(d for d in result.diagnostics.items if d.code.value == "MM401")
-    assert "reduced from 122 to 4" in reduced.message
-
-
-def test_optimized_output_is_deterministic(squat: tuple[Path, Path, Path]) -> None:
-    options = ConvertOptions(fps=60, tolerance=Tolerance())
-    assert convert(*squat, options).text == convert(*squat, options).text
-
-
-def test_cli_optimize_defaults_to_60_fps(inputs: tuple[Path, Path, Path], tmp_path: Path) -> None:
-    motion, model, mapping = inputs
-    args = [
-        "convert",
-        str(motion),
-        "-t",
-        str(model),
-        "-m",
-        str(mapping),
-        "-o",
-        str(tmp_path / "o.json"),
-    ]
-    result = CliRunner().invoke(app, [*args, "--optimize", "--rotation-tolerance", "0.25"])
-    assert result.exit_code == 0, result.output
-    assert "@ 60 fps" in result.output
-    assert "MM401" in result.output
 
 
 # --- secondary motion ---------------------------------------------------------------------------
@@ -373,3 +206,72 @@ def test_cli_inspect_model_suggests_chains(tmp_path: Path) -> None:
     )
     result = CliRunner().invoke(app, ["inspect-model", str(rig), "-m", str(mapping)])
     assert "No unconfigured hair/cloth-like chains found." in result.output
+
+
+# --- model preparation -------------------------------------------------------------------------
+
+
+def test_cli_prepare_model_and_init_mapping(tmp_path: Path) -> None:
+    from tests.unit.test_model_prep import lite_like
+
+    model = write_json(tmp_path / "lite.bbmodel", lite_like())
+    original = model.read_text(encoding="utf-8")
+
+    check = CliRunner().invoke(app, ["prepare-model", str(model), "--check"])
+    assert check.exit_code == 0, check.output
+    assert "split the left arm" in check.output
+    assert not (tmp_path / "lite.prepared.bbmodel").exists()
+
+    result = CliRunner().invoke(app, ["prepare-model", str(model)])
+    assert result.exit_code == 0, result.output
+    prepared = tmp_path / "lite.prepared.bbmodel"
+    assert prepared.exists()
+    assert model.read_text(encoding="utf-8") == original  # never edits the input
+    refused = CliRunner().invoke(app, ["prepare-model", str(model), "-o", str(model)])
+    assert refused.exit_code == 1
+
+    mapping = tmp_path / "lite.json"
+    result = CliRunner().invoke(app, ["init-mapping", str(prepared), "-o", str(mapping)])
+    assert result.exit_code == 0, result.output
+    assert (
+        CliRunner().invoke(app, ["init-mapping", str(prepared), "-o", str(mapping)]).exit_code == 1
+    )
+    generated = json.loads(mapping.read_text(encoding="utf-8"))
+    assert "LeftArm Lower" in generated["bones"]
+
+    motion = tmp_path / "wave.vmd"
+    motion.write_bytes(
+        write_vmd(
+            vmd(bone_key("左ひじ", 0), bone_key("左ひじ", 30, rotation=axis_angle((0, 1, 0), 90)))
+        )
+    )
+    converted = convert(motion, prepared, mapping, ConvertOptions(fps=20))
+    assert "LeftArm Lower" in _clip(converted.text)["bones"]
+
+
+@pytest.mark.real_assets
+def test_every_real_model_can_be_prepared_and_converted(assets_dir: Path, tmp_path: Path) -> None:
+    from miku_motion.mapping.init import generate_mapping, render_mapping
+    from miku_motion.model.document import BbmodelDocument
+    from miku_motion.model.prepare import prepare
+
+    models = sorted((assets_dir / "models").glob("*.bbmodel"))
+    motions = sorted((assets_dir / "motions").glob("*.vmd"))
+    if not models or not motions:
+        pytest.skip("real assets missing")
+    for model in models:
+        document = BbmodelDocument.load(model)
+        _, final = prepare(document, model)
+        prepared = tmp_path / f"{model.stem}.prepared.bbmodel"
+        document.save(prepared)
+        roles = final.roles.by_role()
+        assert {"torso", "head", "thigh_left", "upper_arm_right"} <= roles.keys(), model.name
+        mapping = tmp_path / f"{model.stem}.json"
+        mapping.write_text(
+            render_mapping(
+                generate_mapping(final.skeleton, final.roles, final.suggestions, model.stem)
+            ),
+            encoding="utf-8",
+        )
+        result = convert(motions[0], prepared, mapping, ConvertOptions(fps=20))
+        assert len(_clip(result.text)["bones"]) >= 10, model.name

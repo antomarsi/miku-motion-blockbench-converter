@@ -7,6 +7,8 @@ Its joints (the bones' pivots) plus a tip point become particles:
 - every other particle is pulled towards its *anchor*, where it would be if the chain
   were rigidly attached to that parent (``stiffness``), damped relative to the anchor's
   velocity (``damping``), and pulled down by gravity
+- each segment may swing at most ``max_angle`` away from its rigid direction, which
+  keeps short pieces from flipping over and long hair out of the head
 - ``offset`` shifts the anchors (fully at the tip, blended along the chain) so the
   chain's natural shape can lean, e.g. hair hanging behind the body
 - after each step, segment lengths are restored from root to tip
@@ -37,6 +39,7 @@ class ChainSpec:
     damping: float  # 1/s: damping of motion relative to the rigid pose
     gravity: float  # multiple of GRAVITY
     offset: FloatArray = field(default_factory=lambda: np.zeros(3))  # (3,) px, tip's rest shift
+    max_angle: float = 180.0  # degrees a segment may swing away from its rigid direction
 
 
 def world_transforms(
@@ -87,6 +90,13 @@ def _shortest_arc(u: FloatArray, v: FloatArray) -> FloatArray:
     return quat.normalize(np.where(opposite[:, None], np.concatenate([axis, 0 * dot], 1), q))
 
 
+def _perpendicular(v: FloatArray) -> FloatArray:
+    helper = np.array([1.0, 0.0, 0.0]) if abs(v[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+    across = np.cross(v, helper)
+    result: FloatArray = across / np.linalg.norm(across)
+    return result
+
+
 def _simulate(
     anchors: FloatArray, times: FloatArray, spec: ChainSpec, lengths: FloatArray
 ) -> FloatArray:
@@ -96,6 +106,8 @@ def _simulate(
     positions = rest.copy()
     velocity = np.zeros_like(positions)
     out = np.empty_like(anchors)
+    limit_cos = float(np.cos(np.radians(spec.max_angle)))
+    limit_sin = float(np.sin(np.radians(spec.max_angle)))
 
     def step(dt: float, anchor: FloatArray, anchor_velocity: FloatArray) -> None:
         nonlocal positions, velocity
@@ -107,9 +119,19 @@ def _simulate(
         velocity = velocity + accel * dt
         moved = positions + velocity * dt
         moved[0] = anchor[0]  # pinned to the parent bone
-        for j in range(1, len(moved)):  # restore segment lengths, root to tip
+        for j in range(1, len(moved)):  # restore lengths and swing limits, root to tip
             direction = moved[j] - moved[j - 1]
-            moved[j] = moved[j - 1] + direction * (lengths[j - 1] / np.linalg.norm(direction))
+            direction = direction / np.linalg.norm(direction)
+            if limit_cos > -1.0:
+                rigid = anchor[j] - anchor[j - 1]
+                rigid = rigid / np.linalg.norm(rigid)
+                cos = float(np.dot(direction, rigid))
+                if cos < limit_cos:  # swung too far: put it back on the cone's edge
+                    across = direction - cos * rigid
+                    norm = float(np.linalg.norm(across))
+                    across = across / norm if norm > 1e-9 else _perpendicular(rigid)
+                    direction = limit_cos * rigid + limit_sin * across
+            moved[j] = moved[j - 1] + direction * lengths[j - 1]
         velocity = (moved - positions) / dt
         positions = moved
 

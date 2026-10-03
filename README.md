@@ -23,7 +23,7 @@ uv run miku-motion --help
 miku-motion inspect dance.vmd                 # frames, duration, animated bones, unsupported data
 miku-motion inspect-model model.bbmodel       # bone tree, pivots, rest rotations
 miku-motion convert dance.vmd --target model.bbmodel --mapping mappings/my-rig.json \
-    --output dance.animation.json [--fps 20] [--audio dance.ogg] [--sound modid:dance]
+    --output dance.animation.json [--fps 20] [--optimize]
 miku-motion validate dance.animation.json --target model.bbmodel
 ```
 
@@ -35,12 +35,45 @@ The **mapping file** describes how MMD bones drive your model's bones. The conve
 - `rest_correction` rotates the target's rest pose onto MMD's A-pose (e.g. arms that hang straight down).
 - `ignore` silences warnings for bones you intentionally drop (globs allowed).
 
-### Music
+### Template model (works with any Minecraft skin)
 
-`--audio dance.ogg` adds a GeckoLib sound keyframe on the first frame (`"sound_effects": {"0.0": {"effect": ...}}`) and warns if the music's length differs from the motion's by more than 2 s.
+[templates/](templates/) holds ready-to-dance GeckoLib models with the **exact proportions and skin layout of the Minecraft player**:
 
-- The effect ID defaults to `<mod id>:<audio file name>`, using the GeckoLib mod ID stored in the `.bbmodel`. Override it with `--sound`.
-- The converter doesn't copy the audio anywhere. The consuming mod must register a sound with that ID and handle GeckoLib sound keyframes.
+- **Two variants:** `template.bbmodel` for classic skins (4 px arms, like Steve) and `template_slim.bbmodel` for slim skins (3 px arms, like Alex). Each has a matching mapping, [mappings/template.json](mappings/template.json) and [mappings/template_slim.json](mappings/template_slim.json).
+- **Skin layout:** the 64×128 skin's top 64×64 is a standard Minecraft skin (base and overlay layers, including the hat layer for hair). The extras live **outside** it, in the bottom half.
+- **The pieces:** each Minecraft box is cut at the joints without moving or resizing anything. The body becomes waist and chest, the arms upper arm, forearm and hand, the legs thigh, shin and foot. A separate hips group carries the legs.
+- **Extras:** twintails, ponytail, long hair, a short bob, skirt panels, a tie and sleeve cuffs, all **hidden by default** so a plain Minecraft skin looks right; unhide what you want. Hair, skirt and tie get secondary motion; the cuffs wrap the forearm, so they stay rigid with it.
+
+Put any Minecraft skin on it (64×64, or legacy 64×32):
+
+```bash
+miku-motion apply-skin my_skin.png -o my_model.bbmodel   # detects classic/slim arms
+miku-motion convert dance.vmd -t my_model.bbmodel -m mappings/template.json -o dance.animation.json
+```
+
+This writes `my_model.bbmodel` plus `my_model.png` (your skin on top, the extras below); use `mappings/template_slim.json` for slim skins. `uv run --with pillow python tools/make_template.py` regenerates the templates and their default skins.
+
+### Preparing any model
+
+Most Blockbench models weren't built for dancing: limbs are one piece, legs hang off the torso, the body pivots at the neck. The converter finds the body parts from the geometry (any naming style) and fixes the rig for you:
+
+```bash
+miku-motion prepare-model model.bbmodel --check   # what's missing (writes nothing)
+miku-motion prepare-model model.bbmodel           # writes model.prepared.bbmodel
+miku-motion init-mapping model.prepared.bbmodel -o mappings/model.json
+miku-motion convert dance.vmd -t model.prepared.bbmodel -m mappings/model.json -o dance.animation.json
+```
+
+`prepare-model` never changes the original file. It can:
+
+- **Add a root group** that carries the dance across the floor.
+- **Attach the head and arms to the torso**, for flat rigs where every part sits at the top level.
+- **Move the legs out of the torso**, so bending the upper body doesn't swing them.
+- **Move the torso's pivot to the waist.**
+- **Split one-piece arms and legs at the elbow and knee.** The texture stays exact: split cubes switch to per-face UVs.
+- **Add Blockbench IK to hair chains and limbs:** a tip locator, an IK null and a pole null, so you can pose them by hand in Blockbench.
+
+`init-mapping` writes the matching mapping. Each bone's MMD chain is derived from the standard MMD skeleton, arm rest corrections are measured from the model, the translation scale comes from its height, and hair and cloth chains are added as secondary motion. Review the result; a model with unusual parts may need a few edits.
 
 ### Hair and other secondary motion
 
