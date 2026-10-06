@@ -141,6 +141,7 @@ class McBox:
     overlay_uv: tuple[int, int]
     overlay_inflate: float
     segments: list[tuple[str, float]]  # (bone name, bottom y), top to bottom
+    sole_on_top: bool = False  # the last segment's cut top shows the sole (seen when it bends)
 
 
 def cut_box(box: McBox, label: str) -> dict[str, list[Cube]]:
@@ -157,6 +158,8 @@ def cut_box(box: McBox, label: str) -> dict[str, list[Cube]]:
             (" layer", box.overlay_uv, box.overlay_inflate),
         ):
             faces = slice_faces(box_faces(*uv, w, h, d), *rows, h, first, last)
+            if box.sole_on_top and last and not first and not layer:
+                faces["up"] = [faces["down"][0], faces["up"][1], faces["down"][2], faces["up"][3]]
             cubes.setdefault(bone, []).append(Cube(f"{label}{layer}", start, end, faces, inflate))
         top_y = bottom_y
     return cubes
@@ -198,6 +201,7 @@ def player_parts(arm: int = 4) -> list[Part]:
             (0, 32),
             0.25,
             [("leg_right", 6), ("shin_right", 2), ("foot_right", 0)],
+            sole_on_top=True,
         ),
         "leg_left": McBox(
             (-3.9, 0, -2),
@@ -206,6 +210,7 @@ def player_parts(arm: int = 4) -> list[Part]:
             (0, 48),
             0.25,
             [("leg_left", 6), ("shin_left", 2), ("foot_left", 0)],
+            sole_on_top=True,
         ),
     }
     cubes: dict[str, list[Cube]] = {}
@@ -282,10 +287,10 @@ def extras() -> list[Extra]:
             "sleeve_left",
             "forearm_left",
             (-6, 16, 0),
-            (-8.5, 11, -2.5),
-            (-3.5, 16, 2.5),
+            (-8.5, 11.5, -2.5),
+            (-3.5, 16.5, 2.5),
             "dark",
-            "trim",
+            "cuff",
         ),
     ]
     right = [
@@ -506,9 +511,14 @@ def paint_extra(image: Image.Image, item: Extra, faces: dict[str, list[float]]) 
                 for line, start, end, color in MOUTHS[item.details.removeprefix("mouth_")]:
                     row(image, x0 + start, x0 + end, y0 + line, color)
             continue
+        if item.details == "cuff" and name == "down":  # open cuff: only the rim is drawn
+            px = image.load()
+            for yy in range(y0 + 1, y1 - 1):
+                for xx in range(x0 + 1, x1 - 1):
+                    px[xx, yy] = (0, 0, 0, 0)
         if name in ("up", "down"):
             continue
-        if item.details == "trim":
+        if item.details in ("trim", "cuff"):
             row(image, x0, x1, y1 - 1, MATERIALS["teal"][0])
         if item.details == "tie_ring" and y1 - y0 > 2:
             row(image, x0, x1, y0 + 1, PINK)
