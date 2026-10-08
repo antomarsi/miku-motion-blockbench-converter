@@ -33,6 +33,8 @@ from miku_motion.pipeline import (
     DEFAULT_GROUP_DURATION_TOLERANCE,
     OPTIMIZED_FPS,
     ConvertOptions,
+    Formation,
+    collect_group,
     convert,
     convert_group,
 )
@@ -102,6 +104,7 @@ def inspect(
     if as_json:
         data = dataclasses.asdict(summary)
         data["duration_seconds"] = summary.duration_seconds
+        data["conditional"] = list(summary.conditional)
         data["unsupported"] = list(summary.unsupported)
         typer.echo(json.dumps(data, ensure_ascii=False, indent=2))
         return
@@ -196,8 +199,11 @@ def convert_group_command(
     motions: Annotated[
         list[Path],
         typer.Argument(
-            exists=True, dir_okay=False, readable=True, show_default=False,
-            help="Motion files sharing one target rig and mapping, e.g. a dance crew.",
+            exists=True,
+            readable=True,
+            show_default=False,
+            help="Motion files sharing one target rig and mapping, e.g. a dance crew. A "
+            "folder stands for every .vmd in it, named <folder>_<motion>.",
         ),
     ],
     target: Annotated[
@@ -252,13 +258,28 @@ def convert_group_command(
             "more than this many seconds.",
         ),
     ] = DEFAULT_GROUP_DURATION_TOLERANCE,
+    formation: Annotated[
+        Formation,
+        typer.Option(
+            help="Stage positions stored in the motions: keep them, center the group on the "
+            "origin, or start every performer at its own origin (then place them yourself; "
+            "the table lists where each one stood)."
+        ),
+    ] = Formation.KEEP,
+    sync_length: Annotated[
+        bool,
+        typer.Option(
+            help="Give every animation the longest one's length; shorter ones hold their last pose."
+        ),
+    ] = False,
     strict: Annotated[bool, typer.Option(help="Fail when any warning is emitted.")] = False,
 ) -> None:
     """Convert several motions sharing one target rig, e.g. a dance crew performing together.
 
-    Each motion still converts fully independently - this is a batch convenience plus a
-    duration-mismatch check, not a notion of "show" or "performance": this tool has no
-    opinion on which runtime plays these back together or when each one starts.
+    By default each motion converts fully independently - a batch convenience plus a
+    duration-mismatch check. --sync-length and --formation adjust them as one performance.
+    This tool still has no opinion on which runtime plays these back together or when
+    each one starts.
     """
     sample_rate = fps if fps is not None else (OPTIMIZED_FPS if optimize else DEFAULT_FPS)
     options = ConvertOptions(
@@ -268,30 +289,38 @@ def convert_group_command(
         source_skeleton=source_skeleton if ik else None,
     )
     try:
-        group = convert_group(motions, target, mapping, options, duration_tolerance)
+        group = convert_group(
+            collect_group(motions),
+            target,
+            mapping,
+            options,
+            duration_tolerance,
+            formation=formation,
+            sync_length=sync_length,
+        )
     except MikuMotionError as error:
         raise _fail(error) from error
 
     table = Table(title="Group members")
-    for column in ("motion", "bones", "samples", "length (s)", "warnings"):
+    for column in ("motion", "animation", "bones", "length (s)", "stood at x, z (px)", "warnings"):
         table.add_column(column)
     any_warnings = bool(group.diagnostics.warnings)
     for member in group.members:
         _print_diagnostics(member.result.diagnostics)
         any_warnings = any_warnings or bool(member.result.diagnostics.warnings)
-        destination = (
-            (output_dir / f"{member.motion_path.stem}.animation.json")
-            if output_dir
-            else member.motion_path.with_name(f"{member.motion_path.stem}.animation.json")
-        )
+        file_name = f"{member.label}.animation.json"
+        folder = output_dir or member.motion_path.parent
+        destination = folder / file_name
+        destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(member.result.text, encoding="utf-8", newline="\n")
         animation = member.result.animation
         table.add_row(
             member.motion_path.name,
+            animation.name,
             str(len(animation.tracks)),
-            str(len(animation.times)),
             f"{animation.length:.2f}",
-            str(len(member.result.diagnostics.warnings)) or "",
+            f"{member.start[0]:.1f}, {member.start[2]:.1f}",
+            str(len(member.result.diagnostics.warnings)),
         )
     console.print(table)
     _print_diagnostics(group.diagnostics)
@@ -511,6 +540,10 @@ def _print_summary(path: Path, summary: VmdSummary, all_bones: bool) -> None:
     if static and not all_bones:
         console.print(f"  ({len(static)} static-pose bones hidden; use --all to list them)")
 
+    if summary.conditional:
+        console.print("[bold]Converted when the mapping and skeleton cover it:[/]")
+        for note in summary.conditional:
+            console.print(f"  - {note}")
     if summary.unsupported:
         console.print("[bold yellow]Not converted by this version:[/]")
         for note in summary.unsupported:

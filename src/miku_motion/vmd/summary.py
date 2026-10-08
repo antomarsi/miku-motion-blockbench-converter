@@ -44,19 +44,30 @@ class VmdSummary:
         return self.last_frame / FRAME_RATE
 
     @property
-    def unsupported(self) -> tuple[str, ...]:
+    def conditional(self) -> tuple[str, ...]:
+        """Data that converts only with the right mapping or source skeleton."""
         notes = []
         if self.morph_key_count:
-            notes.append(f"{self.morph_key_count} morph keyframes (facial animation)")
+            notes.append(
+                f"{self.morph_key_count} morph keyframes (facial animation): converted for "
+                "the morphs the mapping has rules for"
+            )
+        ik_bones = [b.name for b in self.bones if b.ik and (b.varies or b.translates)]
+        if ik_bones:
+            notes.append(
+                f"IK-driven motion, solved with the source skeleton: {', '.join(ik_bones)}"
+            )
+        return tuple(notes)
+
+    @property
+    def unsupported(self) -> tuple[str, ...]:
+        notes = []
         if self.camera_key_count:
             notes.append(f"{self.camera_key_count} camera keyframes")
         if self.light_key_count:
             notes.append(f"{self.light_key_count} light keyframes")
         if self.shadow_key_count:
             notes.append(f"{self.shadow_key_count} self-shadow keyframes")
-        ik_bones = [b.name for b in self.bones if b.ik and (b.varies or b.translates)]
-        if ik_bones:
-            notes.append(f"IK-driven motion (not solved yet): {', '.join(ik_bones)}")
         return tuple(notes)
 
 

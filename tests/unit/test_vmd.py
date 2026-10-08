@@ -176,8 +176,10 @@ def test_summary_classifies_bones() -> None:
     assert (bones[ARM].rotates, bones[ARM].varies) == (True, False)
     assert (bones["頭"].rotates, bones["頭"].varies) == (False, False)
     assert bones["左足ＩＫ"].ik
-    assert any("morph" in note for note in summary.unsupported)
-    assert any("IK-driven" in note for note in summary.unsupported)
+    # Morphs and IK are converted now (regression: inspect listed them as unsupported).
+    assert any("morph" in note for note in summary.conditional)
+    assert any("IK-driven" in note for note in summary.conditional)
+    assert summary.unsupported == ()
 
 
 def test_ik_name_detection_handles_full_width() -> None:

@@ -39,13 +39,13 @@
     {"bones": ["tie", "tie_end"], "preset": "accessory"}
   ],
   "morphs": [
-    {"morph": ["まばたき", "笑い", "なごみ", "はぅ", "ウィンク", "ウィンク２"], "bone": "eyelid_left", "scale_from": [1, 0, 1], "scale": [1, 1, 1]},
-    {"morph": ["まばたき", "笑い", "なごみ", "はぅ", "ウィンク右", "ウィンク２右"], "bone": "eyelid_right", "scale_from": [1, 0, 1], "scale": [1, 1, 1]},
-    {"morph": ["あ", "い", "う", "え", "お"], "bone": "mouth_closed", "hide_above": 0.5},
-    {"morph": "あ", "bone": "mouth_a", "show_above": 0.5},
-    {"morph": "い", "bone": "mouth_i", "show_above": 0.5},
-    {"morph": "う", "bone": "mouth_u", "show_above": 0.5},
-    {"morph": "え", "bone": "mouth_e", "show_above": 0.5},
-    {"morph": "お", "bone": "mouth_o", "show_above": 0.5}
+    {"morph": ["まばたき", "笑い", "なごみ", "はぅ", "ウィンク", "ウィンク２", "ウィンク左", "MIK_FACE_WINK_L"], "bone": "eyelid_left", "scale_from": [1, 0, 1], "scale": [1, 1, 1]},
+    {"morph": ["まばたき", "笑い", "なごみ", "はぅ", "ウィンク右", "ウィンク２右", "ｳｨﾝｸ２右", "MIK_FACE_WINK_R"], "bone": "eyelid_right", "scale_from": [1, 0, 1], "scale": [1, 1, 1]},
+    {"morph": ["あ", "あ２", "あ3", "ああ", "MIK_KUCHI_A", "い", "い２", "いい", "MIK_KUCHI_I", "う", "う２", "うう", "MIK_KUCHI_U", "え", "え２", "え3", "えー", "MIK_KUCHI_E", "お", "お２", "お3", "おお", "おー", "MIK_KUCHI_O"], "bone": "mouth_closed", "hide_above": 0.5},
+    {"morph": ["あ", "あ２", "あ3", "ああ", "MIK_KUCHI_A"], "bone": "mouth_a", "show_above": 0.5},
+    {"morph": ["い", "い２", "いい", "MIK_KUCHI_I"], "bone": "mouth_i", "show_above": 0.5},
+    {"morph": ["う", "う２", "うう", "MIK_KUCHI_U"], "bone": "mouth_u", "show_above": 0.5},
+    {"morph": ["え", "え２", "え3", "えー", "MIK_KUCHI_E"], "bone": "mouth_e", "show_above": 0.5},
+    {"morph": ["お", "お２", "お3", "おお", "おー", "MIK_KUCHI_O"], "bone": "mouth_o", "show_above": 0.5}
   ]
 }

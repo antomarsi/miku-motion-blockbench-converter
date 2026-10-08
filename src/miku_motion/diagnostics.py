@@ -35,6 +35,8 @@ class Code(StrEnum):
     KEYS_REDUCED = "MM401"
     REDUCTION_OVER_TOLERANCE = "MM402"
     GROUP_DURATION_MISMATCH = "MM501"
+    GROUP_FORMATION = "MM502"
+    GROUP_LENGTH_SYNCED = "MM503"
 
 
 @dataclass(frozen=True, slots=True)

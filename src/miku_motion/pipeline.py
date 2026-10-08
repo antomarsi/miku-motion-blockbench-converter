@@ -2,7 +2,8 @@
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from enum import StrEnum
 from pathlib import Path
 
 import numpy as np
@@ -15,8 +16,11 @@ from miku_motion.conversion.morphs import apply_morph_rules, resolve_morph_rules
 from miku_motion.conversion.retarget import retarget
 from miku_motion.conversion.secondary import apply_secondary_motion
 from miku_motion.diagnostics import Code, Diagnostics
+from miku_motion.errors import MikuMotionError
 from miku_motion.geckolib.optimize import Tolerance
 from miku_motion.geckolib.writer import WriteStats, render_animation
+from miku_motion.geometry import quat
+from miku_motion.geometry.quat import FloatArray
 from miku_motion.mapping.resolve import resolve
 from miku_motion.mapping.schema import load_mapping
 from miku_motion.mapping.secondary import resolve_secondary, suggest_chains
@@ -54,9 +58,10 @@ def _identifier(text: str) -> str:
     return cleaned or "unnamed"
 
 
-def default_animation_name(model: BlockbenchModel, motion_path: Path) -> str:
-    """GeckoLib's convention: ``animation.<model>.<animation>``."""
-    return f"animation.{_identifier(model.name)}.{_identifier(motion_path.stem)}"
+def default_animation_name(model: BlockbenchModel, motion_path: Path | str) -> str:
+    """GeckoLib's convention: ``animation.<model>.<animation>`` (a path gives its stem)."""
+    label = motion_path.stem if isinstance(motion_path, Path) else motion_path
+    return f"animation.{_identifier(model.name)}.{_identifier(label)}"
 
 
 def _report_ik(rig: SourceRig, results: list[ChainResult], diagnostics: Diagnostics) -> None:
@@ -100,10 +105,26 @@ def _report_reduction(stats: WriteStats, tolerance: Tolerance, diagnostics: Diag
 DEFAULT_GROUP_DURATION_TOLERANCE = 1.0  # seconds
 
 
+class Formation(StrEnum):
+    """What happens to the stage positions the performers' motions carry."""
+
+    KEEP = "keep"  # as authored: every performer stands where its motion puts it
+    CENTER = "center"  # the group moves as one so that its middle starts at the origin
+    ORIGIN = "origin"  # every performer starts at its own origin (the runtime places them)
+
+
+@dataclass(frozen=True, slots=True)
+class GroupEntry:
+    motion_path: Path
+    label: str  # names the animation and the output file
+
+
 @dataclass(frozen=True, slots=True)
 class GroupMember:
     motion_path: Path
     result: ConversionResult
+    label: str
+    start: tuple[float, float, float]  # where the motion puts the performer at t=0 (model px)
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,48 +133,192 @@ class GroupResult:
     diagnostics: Diagnostics  # group-level only: see convert_group's docstring
 
 
+def collect_group(paths: Sequence[Path]) -> tuple[GroupEntry, ...]:
+    """Expand folders into their motion files (by name; labelled ``<folder>_<motion>``)."""
+    entries: list[GroupEntry] = []
+    for path in paths:
+        if not path.is_dir():
+            entries.append(GroupEntry(path, path.stem))
+            continue
+        motions = sorted(
+            (f for f in path.iterdir() if f.is_file() and f.suffix.lower() == ".vmd"),
+            key=lambda f: f.name.lower(),
+        )
+        if not motions:
+            raise MikuMotionError("this folder has no .vmd motions", path=path)
+        folder = path.resolve().name
+        entries.extend(GroupEntry(f, f"{folder}_{f.stem}") for f in motions)
+    seen: dict[str, Path] = {}
+    for entry in entries:
+        key = _identifier(entry.label)
+        if key in seen:
+            raise MikuMotionError(
+                f"it would get the same animation name as {seen[key]}",
+                path=entry.motion_path,
+                hint="rename one of the motions, or convert them in separate runs",
+            )
+        seen[key] = entry.motion_path
+    return tuple(entries)
+
+
+def _movers(draft: "_Draft") -> list[str]:
+    """Translated bones with no translated ancestor: they carry the stage position."""
+    skeleton = draft.model.skeleton
+    moved = {n for n, t in draft.animation.tracks.items() if t.translations is not None}
+    return [
+        b.name
+        for b in skeleton
+        if b.name in moved and not any(a.name in moved for a in skeleton.ancestors(b.name))
+    ]
+
+
+def _parent_rest(draft: "_Draft", bone: str) -> FloatArray:
+    parent = draft.model.skeleton[bone].parent
+    return draft.model.skeleton.rest_world_rotation(parent) if parent else quat.identity()
+
+
+def _start(draft: "_Draft", bone: str) -> FloatArray:
+    """Model-space offset of ``bone`` from its rest position at the first sample."""
+    translations = draft.animation.tracks[bone].translations
+    assert translations is not None
+    start: FloatArray = quat.rotate(_parent_rest(draft, bone), translations[0])
+    return start
+
+
+def _shift(draft: "_Draft", bone: str, offset: FloatArray) -> None:
+    """Move ``bone``'s whole track by ``-offset`` (model space), horizontally only."""
+    track = draft.animation.tracks[bone]
+    assert track.translations is not None
+    flat = np.array([offset[0], 0.0, offset[2]])
+    local = quat.rotate(quat.inverse(_parent_rest(draft, bone)), flat)
+    draft.animation.tracks[bone] = replace(track, translations=track.translations - local)
+
+
+def _apply_formation(
+    drafts: Sequence["_Draft"], starts: Sequence[FloatArray], formation: Formation
+) -> None:
+    middle = np.mean(np.stack(starts), axis=0)
+    for draft in drafts:
+        for bone in _movers(draft):
+            _shift(draft, bone, _start(draft, bone) if formation is Formation.ORIGIN else middle)
+
+
 def convert_group(
-    motion_paths: Sequence[Path],
+    motions: Sequence[Path | GroupEntry],
     target_path: Path,
     mapping_path: Path,
     options: ConvertOptions,
     duration_tolerance: float = DEFAULT_GROUP_DURATION_TOLERANCE,
+    *,
+    formation: Formation = Formation.KEEP,
+    sync_length: bool = False,
 ) -> GroupResult:
     """Convert several motions onto the same target rig, as a group of performers
     sharing one rig and formation - e.g. a dance crew, not a solo.
 
-    This is a convenience over calling :func:`convert` once per motion - each
-    motion is still converted fully independently, in its own right - plus one
-    group-level diagnostic: performers meant to move together are usually
-    expected to share a timeline, so a member whose converted length diverges
-    from the group's average by more than ``duration_tolerance`` is flagged.
-    This tool still has no notion of what uses the group (a duet, a trio, a
-    full ensemble) or when each member starts within some larger piece - that
-    stays entirely the runtime's problem to place and time (see CLAUDE.md).
+    By default this is a convenience over calling :func:`convert` once per motion - each
+    motion is converted independently and its output is identical - plus one group-level
+    diagnostic: performers meant to move together are usually expected to share a
+    timeline, so a member whose converted length diverges from the group's average by
+    more than ``duration_tolerance`` is flagged.
+
+    Two opt-in adjustments treat the motions as one performance:
+
+    - ``sync_length`` gives every animation the longest member's length (shorter ones
+      hold their last pose), so they can be started together and end together.
+    - ``formation`` re-centres the group or moves every performer to its own origin
+      (see :class:`Formation`). Only horizontal position changes; heights are kept.
+
+    This tool still has no notion of what uses the group (a duet, a trio, a full
+    ensemble) or when each member starts within some larger piece - that stays the
+    runtime's problem to place and time. ``GroupMember.start`` reports where each motion
+    put its performer, for runtimes that place them themselves.
     """
-    members = tuple(
-        GroupMember(motion_path, convert(motion_path, target_path, mapping_path, options))
-        for motion_path in motion_paths
-    )
+    entries = [m if isinstance(m, GroupEntry) else GroupEntry(m, m.stem) for m in motions]
+    drafts = [_draft(e.motion_path, target_path, mapping_path, options, e.label) for e in entries]
 
     diagnostics = Diagnostics()
-    if len(members) > 1:
-        lengths = [member.result.animation.length for member in members]
+    lengths = [draft.animation.length for draft in drafts]
+    if len(drafts) > 1 and not sync_length:
         average = sum(lengths) / len(lengths)
-        for member, length in zip(members, lengths, strict=True):
+        for entry, length in zip(entries, lengths, strict=True):
             deviation = abs(length - average)
             if deviation > duration_tolerance:
                 diagnostics.warn(
                     Code.GROUP_DURATION_MISMATCH,
-                    f"{member.motion_path.name} converts to {length:.2f}s, {deviation:.2f}s away "
-                    f"from the group's average ({average:.2f}s over {len(members)} members)",
+                    f"{entry.motion_path.name} converts to {length:.2f}s, {deviation:.2f}s away "
+                    f"from the group's average ({average:.2f}s over {len(drafts)} members)",
                 )
+
+    starts = []
+    for draft in drafts:
+        movers = _movers(draft)
+        starts.append(_start(draft, movers[0]) if movers else np.zeros(3))
+    if formation is not Formation.KEEP and drafts:
+        _apply_formation(drafts, starts, formation)
+        change = (
+            "every performer now starts at its own origin"
+            if formation is Formation.ORIGIN
+            else "the group was moved so that its middle starts at the origin"
+        )
+        diagnostics.info(
+            Code.GROUP_FORMATION,
+            f"formation {formation.value!r}: {change}; heights are unchanged",
+        )
+    if sync_length and drafts:
+        longest = max(lengths)
+        padded = [
+            e.motion_path.name
+            for e, length in zip(entries, lengths, strict=True)
+            if length < longest
+        ]
+        for draft in drafts:
+            draft.animation.length = longest
+        if padded:
+            diagnostics.info(
+                Code.GROUP_LENGTH_SYNCED,
+                f"every animation is now {longest:.2f}s long; these hold their last pose "
+                f"until then: {', '.join(padded)}",
+            )
+
+    members = tuple(
+        GroupMember(
+            entry.motion_path,
+            _finish(draft, options),
+            entry.label,
+            (float(start[0]), float(start[1]), float(start[2])),
+        )
+        for entry, draft, start in zip(entries, drafts, starts, strict=True)
+    )
     return GroupResult(members, diagnostics)
+
+
+@dataclass(slots=True)
+class _Draft:
+    """A converted animation that can still be adjusted before it is written."""
+
+    animation: Animation
+    model: BlockbenchModel
+    diagnostics: Diagnostics
+
+
+def _finish(draft: _Draft, options: ConvertOptions) -> ConversionResult:
+    text, stats = render_animation(draft.animation, draft.model.skeleton, options.tolerance)
+    if options.tolerance is not None:
+        _report_reduction(stats, options.tolerance, draft.diagnostics)
+    return ConversionResult(text, draft.animation, draft.model, draft.diagnostics)
 
 
 def convert(
     motion_path: Path, target_path: Path, mapping_path: Path, options: ConvertOptions
 ) -> ConversionResult:
+    draft = _draft(motion_path, target_path, mapping_path, options, motion_path.stem)
+    return _finish(draft, options)
+
+
+def _draft(
+    motion_path: Path, target_path: Path, mapping_path: Path, options: ConvertOptions, label: str
+) -> _Draft:
     diagnostics = Diagnostics()
     motion = to_source_motion(read_vmd(motion_path), diagnostics)
     model = read_bbmodel(target_path)
@@ -203,7 +368,7 @@ def convert(
         mapping,
         model.skeleton,
         MMD_TO_CANONICAL,
-        name=options.name or default_animation_name(model, motion_path),
+        name=options.name or default_animation_name(model, label),
         loop=options.loop,
     )
     morph_rules = resolve_morph_rules(
@@ -216,7 +381,4 @@ def convert(
             Code.SECONDARY_MOTION,
             "simulated secondary motion for " + ", ".join(" > ".join(c.bones) for c in chains),
         )
-    text, stats = render_animation(animation, model.skeleton, options.tolerance)
-    if options.tolerance is not None:
-        _report_reduction(stats, options.tolerance, diagnostics)
-    return ConversionResult(text, animation, model, diagnostics)
+    return _Draft(animation, model, diagnostics)

@@ -25,7 +25,7 @@ Status: **verified** (2026-09-29). Facing and left/right were confirmed from rea
 
 - Offset from the rest pivot, in pixels, in the parent bone's frame.
 - X is negated (`POSITION_SIGNS = (−1, +1, +1)`). **Verified in Blockbench** (calibration steps 4–6).
-- Still to verify: that GeckoLib at runtime in Minecraft matches Blockbench.
+- GeckoLib at runtime in Minecraft matches Blockbench. **Verified in-game** (2026-10) with converted dances.
 
 ## Numbers and determinism
 

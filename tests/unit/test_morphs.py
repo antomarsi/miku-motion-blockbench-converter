@@ -201,9 +201,8 @@ def test_eyelids_and_mouth_shapes() -> None:
     lid = next(r for r in rules if r["bone"] == "eyelid_right")
     assert lid["scale_from"] == [1, 0, 1]
     assert "ウィンク右" in lid["morph"]
-    assert next(r for r in rules if r["bone"] == "mouth_o") == {
-        "morph": "お",
-        "bone": "mouth_o",
-        "show_above": 0.5,
-    }
+    mouth_o = next(r for r in rules if r["bone"] == "mouth_o")
+    assert mouth_o["morph"][0] == "お"
+    assert "お２" in mouth_o["morph"]  # variant names drive the same shape
+    assert mouth_o["show_above"] == 0.5
     assert next(r for r in rules if r["bone"] == "mouth_closed")["hide_above"] == 0.5

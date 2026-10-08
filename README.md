@@ -36,6 +36,25 @@ are usually expected to share a timeline. Each motion is still converted fully i
 this tool has no notion of a "show" or who plays the result back together - that stays entirely
 the runtime's job.
 
+A folder stands for every `.vmd` inside it, and its animations are named `<folder>_<motion>`:
+
+```bash
+miku-motion convert-group dances/crew/ --target model.bbmodel --mapping mappings/my-rig.json \
+    --output-dir out/crew/ --sync-length --formation origin
+```
+
+Two options adjust the motions as one performance:
+
+- `--sync-length` gives every animation the longest one's length, so they start and end
+  together; shorter ones hold their last pose.
+- `--formation` decides what happens to the stage positions stored in the motions:
+  - `keep` (default): every performer stands where its motion puts it.
+  - `center`: the whole group moves so that its middle starts at the origin.
+  - `origin`: every performer starts at its own origin, for runtimes that place the
+    performers themselves. The summary table lists where each one stood (x, z in pixels).
+
+  Only horizontal positions change; heights are kept.
+
 The **mapping file** describes how MMD bones drive your model's bones. The converter itself never assumes a particular rig, so any Blockbench model can be targeted with its own mapping. [mappings/mikucraft.json](mappings/mikucraft.json) is a commented example:
 
 - Each key is a **target** (Blockbench) bone. `from` lists the MMD bones whose rotations combine into it, parent to child.

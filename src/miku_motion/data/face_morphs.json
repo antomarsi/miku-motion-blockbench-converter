@@ -1,14 +1,14 @@
 {
-  "description": "Standard MMD face morphs and the default effects `init-mapping` gives face bones it recognises inside the head (by name: eyelid/lid, eyes, eye, mouth, mouth_<vowel>, mouth_closed).",
+  "description": "Standard MMD face morphs and the default effects `init-mapping` gives face bones it recognises inside the head (by name: eyelid/lid, eyes, eye, mouth, mouth_<vowel>, mouth_closed). Each list starts with the standard name, followed by variants seen in real motions.",
   "eyes_closed": ["まばたき", "笑い", "なごみ", "はぅ"],
-  "wink_left": ["ウィンク", "ウィンク２"],
-  "wink_right": ["ウィンク右", "ウィンク２右"],
+  "wink_left": ["ウィンク", "ウィンク２", "ウィンク左", "MIK_FACE_WINK_L"],
+  "wink_right": ["ウィンク右", "ウィンク２右", "ｳｨﾝｸ２右", "MIK_FACE_WINK_R"],
   "vowels": {
-    "a": ["あ"],
-    "i": ["い"],
-    "u": ["う"],
-    "e": ["え"],
-    "o": ["お"]
+    "a": ["あ", "あ２", "あ3", "ああ", "MIK_KUCHI_A"],
+    "i": ["い", "い２", "いい", "MIK_KUCHI_I"],
+    "u": ["う", "う２", "うう", "MIK_KUCHI_U"],
+    "e": ["え", "え２", "え3", "えー", "MIK_KUCHI_E"],
+    "o": ["お", "お２", "お3", "おお", "おー", "MIK_KUCHI_O"]
   },
   "eye_squash": [1, 0.1, 1],
   "mouth_scale": {
