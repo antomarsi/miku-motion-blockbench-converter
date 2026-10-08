@@ -2,6 +2,7 @@
 
 import json
 import math
+import struct
 from pathlib import Path
 from typing import Any
 
@@ -118,3 +119,81 @@ def player_rig(layout: int = 5) -> dict[str, Any]:
 def write_json(path: Path, data: Any) -> Path:
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
+
+
+# --- PMX models -------------------------------------------------------------------------------
+
+type PmxIkSpec = tuple[str, int, float, list[tuple[str, tuple[Vec, Vec] | None]]]
+
+
+def pmx_bone(
+    name: str,
+    parent: str | None,
+    position: Vec,
+    *,
+    inherit: tuple[str, float] | None = None,
+    ik: PmxIkSpec | None = None,
+) -> dict[str, Any]:
+    """``ik`` is (target, iterations, limit radians, [(link bone, (min, max) radians or None)])."""
+    return {"name": name, "parent": parent, "position": position, "inherit": inherit, "ik": ik}
+
+
+def pmx_bytes(
+    *bones: dict[str, Any],
+    morphs: tuple[tuple[str, int], ...] = (),
+    name: str = "test model",
+    utf8: bool = False,
+    index_size: int = 2,
+) -> bytes:
+    """A minimal PMX 2.0 file: one vertex, one face, one material, then bones and morphs."""
+    encoding = "utf-8" if utf8 else "utf-16-le"
+    index = {1: "b", 2: "h", 4: "i"}[index_size]
+    order = [b["name"] for b in bones]
+
+    def text(value: str) -> bytes:
+        raw = value.encode(encoding)
+        return struct.pack("<i", len(raw)) + raw
+
+    def ref(bone: str | None) -> bytes:
+        return struct.pack("<" + index, order.index(bone) if bone is not None else -1)
+
+    out = [b"PMX ", struct.pack("<f", 2.0), bytes([8, 1 if utf8 else 0, 0])]
+    out.append(bytes([index_size] * 6))  # vertex, texture, material, bone, morph, rigid body
+    out += [text(name), text(""), text(""), text("")]
+    # One BDEF1 vertex, one triangle, one texture and one material to skip over.
+    out += [struct.pack("<i", 1), struct.pack("<8f", *[0.0] * 8), b"\x00", ref(None)]
+    out.append(struct.pack("<f", 1.0))
+    out += [struct.pack("<i", 3), struct.pack("<" + index.upper() * 3, 0, 0, 0)]
+    out += [struct.pack("<i", 1), text("tex.png")]
+    out += [struct.pack("<i", 1), text("material"), text("")]
+    out.append(struct.pack("<11f", *[0.0] * 11) + b"\x00" + struct.pack("<5f", *[0.0] * 5))
+    out.append(struct.pack("<" + index * 2, 0, -1) + b"\x00\x01\x00")  # shared toon 0
+    out += [text("memo"), struct.pack("<i", 3)]
+
+    out.append(struct.pack("<i", len(bones)))
+    for bone in bones:
+        flags = 0x0002 | 0x0004  # rotatable, movable; tail given as an offset
+        if bone["inherit"]:
+            flags |= 0x0100
+        if bone["ik"]:
+            flags |= 0x0020
+        out += [text(bone["name"]), text(""), struct.pack("<3f", *bone["position"])]
+        out += [ref(bone["parent"]), struct.pack("<i", 0), struct.pack("<H", flags)]
+        out.append(struct.pack("<3f", 0.0, 1.0, 0.0))
+        if bone["inherit"]:
+            out += [ref(bone["inherit"][0]), struct.pack("<f", bone["inherit"][1])]
+        if bone["ik"]:
+            target, iterations, limit, links = bone["ik"]
+            out += [ref(target), struct.pack("<if", iterations, limit)]
+            out.append(struct.pack("<i", len(links)))
+            for link, limits in links:
+                out += [ref(link), bytes([1 if limits else 0])]
+                if limits:
+                    out.append(struct.pack("<6f", *limits[0], *limits[1]))
+
+    out.append(struct.pack("<i", len(morphs)))
+    for morph, panel in morphs:  # vertex morphs with one offset each
+        out += [text(morph), text(""), bytes([panel, 1]), struct.pack("<i", 1)]
+        out.append(struct.pack("<" + index.upper(), 0) + struct.pack("<3f", 0.0, 0.1, 0.0))
+    out.append(struct.pack("<i", 0))  # display frames: never read
+    return b"".join(out)

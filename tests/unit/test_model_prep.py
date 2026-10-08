@@ -110,7 +110,14 @@ def test_source_path_walks_the_mmd_tree() -> None:
         "センター",
         "グルーブ",
     ]
-    assert source_path(tree, inverse, "上半身", "頭") == ["上半身2", "首", "頭"]
+    # Extra spine bones some model families add are on the path (at rest when absent).
+    assert source_path(tree, inverse, "上半身", "頭") == [
+        "上半身1",
+        "上半身2",
+        "上半身3",
+        "首",
+        "頭",
+    ]
     # From the root to a leg passes MMD's waist cancel.
     assert source_path(tree, inverse, "グルーブ", "左足") == [
         "腰",
@@ -139,8 +146,8 @@ def test_generated_mapping_matches_a_hand_written_one() -> None:
         "translation": True,
     }
     assert bones["Body"] == {"from": ["腰", "上半身"]}
-    assert bones["Chest"] == "上半身2"
-    assert bones["Head"] == {"from": ["上半身2", "首", "頭"]}
+    assert bones["Chest"] == {"from": ["上半身1", "上半身2"]}
+    assert bones["Head"] == {"from": ["上半身1", "上半身2", "上半身3", "首", "頭"]}
     assert bones["LowerLeftArm"]["from"] == ["左腕捩", "左ひじ", "左手捩"]
     assert bones["LeftShin"] == "左ひざ"
     z = bones["LeftArm"]["rest_correction"]["euler_deg"][2]
@@ -298,6 +305,6 @@ def test_hips_and_stacked_waist_and_chest() -> None:
     bones = mapping["bones"]
     assert bones["hips"] == {"from": ["腰", "下半身"]}
     assert bones["waist"] == {"from": ["腰", "上半身"]}
-    assert bones["chest"] == "上半身2"
-    assert bones["head"] == {"from": ["首", "頭"]}  # under the chest: no 上半身2 again
+    assert bones["chest"] == {"from": ["上半身1", "上半身2"]}
+    assert bones["head"] == {"from": ["上半身3", "首", "頭"]}  # under the chest: no 上半身2 again
     assert bones["leg_l"] == {"from": [{"bone": "腰", "weight": -1}, "左足"]}

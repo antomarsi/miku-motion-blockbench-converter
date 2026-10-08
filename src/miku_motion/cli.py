@@ -159,7 +159,7 @@ def convert_command(
         str,
         typer.Option(
             help="Skeleton of the motion's MMD model, used to solve IK: a built-in name or "
-            "a skeleton .json file."
+            "a skeleton .json file, or best the .pmx model the motion was made for."
         ),
     ] = DEFAULT_SKELETON,
     ik: Annotated[bool, typer.Option(help="Solve IK (legs, toes) like MMD does.")] = True,
@@ -246,7 +246,7 @@ def convert_group_command(
         str,
         typer.Option(
             help="Skeleton of the motions' MMD model, used to solve IK: a built-in name or "
-            "a skeleton .json file."
+            "a skeleton .json file, or best the .pmx model the motion was made for."
         ),
     ] = DEFAULT_SKELETON,
     ik: Annotated[bool, typer.Option(help="Solve IK (legs, toes) like MMD does.")] = True,

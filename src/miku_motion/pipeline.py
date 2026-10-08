@@ -238,6 +238,15 @@ def convert_group(
     drafts = [_draft(e.motion_path, target_path, mapping_path, options, e.label) for e in entries]
 
     diagnostics = Diagnostics()
+    idle = [e.motion_path.name for e, d in zip(entries, drafts, strict=True) if not d.performs]
+    if idle and len(idle) < len(drafts):
+        # Dance folders often ship the camera motion next to the performers'.
+        diagnostics.warn(
+            Code.GROUP_MEMBER_SKIPPED,
+            f"skipped {', '.join(idle)}: no bone or morph keyframes (a camera or light motion?)",
+        )
+        entries = [e for e, d in zip(entries, drafts, strict=True) if d.performs]
+        drafts = [d for d in drafts if d.performs]
     lengths = [draft.animation.length for draft in drafts]
     if len(drafts) > 1 and not sync_length:
         average = sum(lengths) / len(lengths)
@@ -300,6 +309,7 @@ class _Draft:
     animation: Animation
     model: BlockbenchModel
     diagnostics: Diagnostics
+    performs: bool  # the motion has bone or morph keys (not just a camera, say)
 
 
 def _finish(draft: _Draft, options: ConvertOptions) -> ConversionResult:
@@ -354,6 +364,7 @@ def _draft(
     frames = times * motion.frame_rate
     needed = {link.source for b in mapping.bindings for link in b.chain}
     if rig is not None:
+        rig = rig.driving(needed, motion.canonical_name)
         needed |= rig.required_bones()
     poses: dict[str, PoseSamples] = {
         name: sample_track(motion.tracks[name], frames)
@@ -381,4 +392,4 @@ def _draft(
             Code.SECONDARY_MOTION,
             "simulated secondary motion for " + ", ".join(" > ".join(c.bones) for c in chains),
         )
-    return _Draft(animation, model, diagnostics)
+    return _Draft(animation, model, diagnostics, bool(motion.tracks or motion.morphs))

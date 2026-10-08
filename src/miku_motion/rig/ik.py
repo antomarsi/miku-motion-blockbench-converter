@@ -179,7 +179,17 @@ def solve_chain(
                     rotated = _clamp_euler(rotated, link)
                 local[link.bone] = np.where(active[:, None], rotated, local[link.bone])
 
-    _, effector = forward()
+    world, effector = forward()
+    if len(chain.links) == 1:
+        # One bone can only aim at its goal (toes: the goal is often keyed nearer or
+        # farther than the foot is long). Judge it against the closest point it can reach.
+        pivot = world[root][1]
+        reach = np.linalg.norm(effector - pivot, axis=1, keepdims=True)
+        to_goal = goal - pivot
+        distance = np.linalg.norm(to_goal, axis=1, keepdims=True)
+        goal = np.where(
+            distance > _TINY, pivot + to_goal / np.maximum(distance, _TINY) * reach, effector
+        )
     residuals: FloatArray = np.where(enabled, np.linalg.norm(effector - goal, axis=1), 0.0)
     for link in chain.links:
         original = poses[link.bone]

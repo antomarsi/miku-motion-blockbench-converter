@@ -7,7 +7,8 @@ skeleton file (a built-in standard template, or later the model's PMX).
 Everything here is in the source (MMD) coordinate space and units.
 """
 
-from dataclasses import dataclass, field
+from collections.abc import Callable, Collection
+from dataclasses import dataclass, field, replace
 
 from miku_motion.geometry.quat import FloatArray
 
@@ -74,6 +75,17 @@ class SourceRig:
             return bone.position
         result: FloatArray = bone.position - self.bones[bone.parent].position
         return result
+
+    def driving(
+        self, bones: Collection[str], key: Callable[[str], str] = lambda name: name
+    ) -> "SourceRig":
+        """This rig with only the IK chains that rotate one of ``bones``.
+
+        A model's own skeleton often has helper chains (hair, twist bones) that affect
+        nothing a conversion uses. ``key`` maps rig bone names to the names in ``bones``.
+        """
+        chains = tuple(c for c in self.ik if any(key(link.bone) in bones for link in c.links))
+        return replace(self, ik=chains)
 
     def required_bones(self) -> set[str]:
         """Every bone whose motion affects some IK chain."""

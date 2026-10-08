@@ -138,12 +138,16 @@ MMD hair, skirts and ties move by physics, which a `.vmd` doesn't store. Instead
 Most dances move the legs through MMD's IK: the motion stores where the feet go, and MMD bends the knees to reach them. The converter solves this IK the way MMD does, so knees bend and feet stay planted.
 
 - Solving needs the dancing model's bone positions, which a `.vmd` doesn't contain. By default a built-in skeleton with standard MMD proportions is used (`--source-skeleton mmd-standard`).
-- If warning MM106 says feet miss their targets, the real model's legs differ from the template. Pass a skeleton `.json` with that model's proportions (format: [src/miku_motion/data/skeletons/mmd-standard.json](src/miku_motion/data/skeletons/mmd-standard.json)). Reading the model's `.pmx` directly is planned.
+- You don't need the model. The built-in skeleton works for most dances.
+- If warning MM106 says feet miss their targets, the real model's legs differ from the built-in ones. If you have the `.pmx` model the motion was made for, pass it: `--source-skeleton model.pmx`. Only its bones and IK settings are read; the mesh, textures and physics are skipped.
+  - Use the motion's own model. A different model can make the feet miss more, not less.
+  - A skeleton `.json` works too (format: [src/miku_motion/data/skeletons/mmd-standard.json](src/miku_motion/data/skeletons/mmd-standard.json)).
+- Toe IK only aims the foot at its goal, so it's judged by its aim, not by distance.
 - `--no-ik` turns solving off.
 
 ## Scope
 
-Supported: skeletal motion (bone rotation and translation with MMD interpolation curves, resampled at a fixed rate) and leg/toe IK. Not yet supported: facial morphs, camera, lights, and physics (hair, skirt, ties). Every dropped or approximated feature is reported as a warning.
+Supported: skeletal motion (bone rotation and translation with MMD interpolation curves, resampled at a fixed rate), leg/toe IK, facial morphs through mapping rules, and simulated hair/cloth motion. Not supported: camera, lights, and MMD's own physics. Every dropped or approximated feature is reported as a warning.
 
 ## Development
 
@@ -154,6 +158,16 @@ uv run ruff check . && uv run mypy
 
 Put your own models and motions in `assets/`. That folder is git-ignored, so real assets never end up in the repository.
 
+## Credits
+
+These MMD models were used during development, only to study how MMD skeletons are built (bone trees, IK settings, morph names) and to test the converter. No part of them is included in this repository or in anything the converter writes: no mesh, texture, physics or measurements.
+
+- **Project DIVA X HD Model Pack #1** by Durles (models © SEGA).
+- **Project SEKAI "Default Miku"** from TearlessHen's SEKAI archive (© SEGA, Colorful Palette; conversion by TearlessHen).
+- **Tsumi-style Kagamine Len and Kagamine Rin** (つみ式鏡音レン / つみ式鏡音リン) by つみだんご.
+
+Hatsune Miku, Kagamine Rin and Kagamine Len are © Crypton Future Media, INC.
+
 ## License
 
-MIT
+MIT (the converter's code and the template model). The models credited above are not covered by it and are not distributed here.

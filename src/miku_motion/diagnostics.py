@@ -37,6 +37,7 @@ class Code(StrEnum):
     GROUP_DURATION_MISMATCH = "MM501"
     GROUP_FORMATION = "MM502"
     GROUP_LENGTH_SYNCED = "MM503"
+    GROUP_MEMBER_SKIPPED = "MM504"
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,10 +8,10 @@
   "bones": {
     "Root": { "from": ["全ての親", "全ての親2", "センター", "グルーブ"], "translation": true },
     "Body": { "from": ["腰", "上半身"] },
-    "Chest": "上半身2",
-    "Head": { "from": ["上半身2", "首", "頭"] },
+    "Chest": { "from": ["上半身1", "上半身2"] },
+    "Head": { "from": ["上半身1", "上半身2", "上半身3", "首", "頭"] },
     "LeftArm": {
-      "from": ["上半身2", "左肩", "左腕"],
+      "from": ["上半身1", "上半身2", "上半身3", "左肩", "左腕"],
       "rest_correction": { "euler_deg": [0, 0, -53] }
     },
     "BottomLeftArm": {
@@ -19,7 +19,7 @@
       "rest_correction": { "euler_deg": [0, 0, -53] }
     },
     "RightArm": {
-      "from": ["上半身2", "右肩", "右腕"],
+      "from": ["上半身1", "上半身2", "上半身3", "右肩", "右腕"],
       "rest_correction": { "euler_deg": [0, 0, 53] }
     },
     "BottomRightArm": {

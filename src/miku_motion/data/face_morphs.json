@@ -4,11 +4,11 @@
   "wink_left": ["ウィンク", "ウィンク２", "ウィンク左", "MIK_FACE_WINK_L"],
   "wink_right": ["ウィンク右", "ウィンク２右", "ｳｨﾝｸ２右", "MIK_FACE_WINK_R"],
   "vowels": {
-    "a": ["あ", "あ２", "あ3", "ああ", "MIK_KUCHI_A"],
-    "i": ["い", "い２", "いい", "MIK_KUCHI_I"],
-    "u": ["う", "う２", "うう", "MIK_KUCHI_U"],
-    "e": ["え", "え２", "え3", "えー", "MIK_KUCHI_E"],
-    "o": ["お", "お２", "お3", "おお", "おー", "MIK_KUCHI_O"]
+    "a": ["あ", "あ２", "あ2", "あ3", "ああ", "MIK_KUCHI_A", "KUCHI_A"],
+    "i": ["い", "い２", "い2", "いい", "MIK_KUCHI_I", "KUCHI_I"],
+    "u": ["う", "う２", "う2", "うう", "MIK_KUCHI_U", "KUCHI_U"],
+    "e": ["え", "え２", "え2", "え3", "えー", "MIK_KUCHI_E", "KUCHI_E"],
+    "o": ["お", "お２", "お2", "お3", "おお", "おー", "MIK_KUCHI_O", "KUCHI_O"]
   },
   "eye_squash": [1, 0.1, 1],
   "mouth_scale": {

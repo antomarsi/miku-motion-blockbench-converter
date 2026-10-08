@@ -287,3 +287,20 @@ def test_cli_converts_a_folder_as_one_performance(tmp_path: Path) -> None:
         assert clip["bones"]["Root"]["position"]["0.0"] == [0, -2, 0], name
     assert "MM502" in result.output
     assert "MM503" in result.output
+
+
+def test_group_skips_motions_without_performers(tmp_path: Path) -> None:
+    """Dance folders ship a camera motion too: it must not become a member or set the length
+    (regression: a camera-only file was written as an empty animation)."""
+    model = write_json(tmp_path / "rig.bbmodel", player_rig())
+    mapping = write_json(tmp_path / "mapping.json", MAPPING)
+    dancer = _motion(tmp_path / "dancer.vmd", 20)
+    camera = tmp_path / "camera.vmd"
+    camera.write_bytes(write_vmd(vmd()))
+
+    group = convert_group(
+        [camera, dancer], model, mapping, ConvertOptions(fps=20), sync_length=True
+    )
+    assert [m.motion_path for m in group.members] == [dancer]
+    skipped = next(d for d in group.diagnostics.items if d.code is Code.GROUP_MEMBER_SKIPPED)
+    assert "camera.vmd" in skipped.message

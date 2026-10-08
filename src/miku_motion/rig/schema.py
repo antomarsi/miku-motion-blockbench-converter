@@ -29,6 +29,7 @@ import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from miku_motion.errors import MikuMotionError
+from miku_motion.pmx.adapter import read_pmx_rig
 from miku_motion.rig.model import IkChain, IkLink, Inherit, RigBone, SourceRig
 
 BUILTIN_PACKAGE = "miku_motion.data.skeletons"
@@ -136,8 +137,11 @@ def parse_skeleton(data: object, source: str) -> SourceRig:
 
 
 def load_skeleton(name_or_path: str | Path) -> SourceRig:
-    """Load a built-in skeleton by name (e.g. ``mmd-standard``) or a JSON file by path."""
+    """Load a built-in skeleton by name (e.g. ``mmd-standard``), or a skeleton JSON
+    file or the motion's own ``.pmx`` model by path."""
     path = Path(name_or_path)
+    if path.suffix.lower() == ".pmx":
+        return read_pmx_rig(path)
     if path.suffix.lower() == ".json" or path.exists():
         try:
             text = path.read_text(encoding="utf-8")
