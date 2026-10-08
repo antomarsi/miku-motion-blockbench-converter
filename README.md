@@ -24,8 +24,17 @@ miku-motion inspect dance.vmd                 # frames, duration, animated bones
 miku-motion inspect-model model.bbmodel       # bone tree, pivots, rest rotations
 miku-motion convert dance.vmd --target model.bbmodel --mapping mappings/my-rig.json \
     --output dance.animation.json [--fps 20] [--optimize]
+miku-motion convert-group crew-1.vmd crew-2.vmd crew-3.vmd \
+    --target model.bbmodel --mapping mappings/my-rig.json --output-dir out/
 miku-motion validate dance.animation.json --target model.bbmodel
 ```
+
+`convert-group` batches several motions against one shared target rig and mapping - e.g. a
+dance crew performing together - and flags any member whose converted length diverges from the
+group's average (`--duration-tolerance`, default 1s), since performers meant to move together
+are usually expected to share a timeline. Each motion is still converted fully independently;
+this tool has no notion of a "show" or who plays the result back together - that stays entirely
+the runtime's job.
 
 The **mapping file** describes how MMD bones drive your model's bones. The converter itself never assumes a particular rig, so any Blockbench model can be targeted with its own mapping. [mappings/mikucraft.json](mappings/mikucraft.json) is a commented example:
 

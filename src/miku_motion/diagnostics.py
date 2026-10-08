@@ -34,6 +34,7 @@ class Code(StrEnum):
     SECONDARY_CANDIDATES = "MM303"
     KEYS_REDUCED = "MM401"
     REDUCTION_OVER_TOLERANCE = "MM402"
+    GROUP_DURATION_MISMATCH = "MM501"
 
 
 @dataclass(frozen=True, slots=True)

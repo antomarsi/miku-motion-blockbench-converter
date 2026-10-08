@@ -1,6 +1,7 @@
 """End-to-end conversion: motion + target model + mapping -> GeckoLib animation."""
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -94,6 +95,60 @@ def _report_reduction(stats: WriteStats, tolerance: Tolerance, diagnostics: Diag
             f"some rotations still differ by up to {stats.max_rotation_error:.2f} deg between "
             f"keys (tolerance {tolerance.rotation_degrees:g} deg); try a higher --fps",
         )
+
+
+DEFAULT_GROUP_DURATION_TOLERANCE = 1.0  # seconds
+
+
+@dataclass(frozen=True, slots=True)
+class GroupMember:
+    motion_path: Path
+    result: ConversionResult
+
+
+@dataclass(frozen=True, slots=True)
+class GroupResult:
+    members: tuple[GroupMember, ...]
+    diagnostics: Diagnostics  # group-level only: see convert_group's docstring
+
+
+def convert_group(
+    motion_paths: Sequence[Path],
+    target_path: Path,
+    mapping_path: Path,
+    options: ConvertOptions,
+    duration_tolerance: float = DEFAULT_GROUP_DURATION_TOLERANCE,
+) -> GroupResult:
+    """Convert several motions onto the same target rig, as a group of performers
+    sharing one rig and formation - e.g. a dance crew, not a solo.
+
+    This is a convenience over calling :func:`convert` once per motion - each
+    motion is still converted fully independently, in its own right - plus one
+    group-level diagnostic: performers meant to move together are usually
+    expected to share a timeline, so a member whose converted length diverges
+    from the group's average by more than ``duration_tolerance`` is flagged.
+    This tool still has no notion of what uses the group (a duet, a trio, a
+    full ensemble) or when each member starts within some larger piece - that
+    stays entirely the runtime's problem to place and time (see CLAUDE.md).
+    """
+    members = tuple(
+        GroupMember(motion_path, convert(motion_path, target_path, mapping_path, options))
+        for motion_path in motion_paths
+    )
+
+    diagnostics = Diagnostics()
+    if len(members) > 1:
+        lengths = [member.result.animation.length for member in members]
+        average = sum(lengths) / len(lengths)
+        for member, length in zip(members, lengths, strict=True):
+            deviation = abs(length - average)
+            if deviation > duration_tolerance:
+                diagnostics.warn(
+                    Code.GROUP_DURATION_MISMATCH,
+                    f"{member.motion_path.name} converts to {length:.2f}s, {deviation:.2f}s away "
+                    f"from the group's average ({average:.2f}s over {len(members)} members)",
+                )
+    return GroupResult(members, diagnostics)
 
 
 def convert(

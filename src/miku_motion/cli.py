@@ -28,7 +28,14 @@ from miku_motion.model.document import BbmodelDocument
 from miku_motion.model.prepare import PrepareOptions, prepare
 from miku_motion.model.roles import detect_roles
 from miku_motion.model.skin import make_skinned_model
-from miku_motion.pipeline import DEFAULT_FPS, OPTIMIZED_FPS, ConvertOptions, convert
+from miku_motion.pipeline import (
+    DEFAULT_FPS,
+    DEFAULT_GROUP_DURATION_TOLERANCE,
+    OPTIMIZED_FPS,
+    ConvertOptions,
+    convert,
+    convert_group,
+)
 from miku_motion.rig.schema import DEFAULT_SKELETON
 from miku_motion.vmd import synth
 from miku_motion.vmd.parser import read_vmd
@@ -182,6 +189,116 @@ def convert_command(
         f"{len(animation.times)} samples @ {sample_rate:g} fps, {animation.length:.2f} s)",
         soft_wrap=True,
     )
+
+
+@app.command(name="convert-group")
+def convert_group_command(
+    motions: Annotated[
+        list[Path],
+        typer.Argument(
+            exists=True, dir_okay=False, readable=True, show_default=False,
+            help="Motion files sharing one target rig and mapping, e.g. a dance crew.",
+        ),
+    ],
+    target: Annotated[
+        Path,
+        typer.Option(
+            "--target", "-t", exists=True, dir_okay=False, help="Target Blockbench model."
+        ),
+    ],
+    mapping: Annotated[
+        Path,
+        typer.Option("--mapping", "-m", exists=True, dir_okay=False, help="Bone mapping JSON."),
+    ],
+    output_dir: Annotated[
+        Path | None,
+        typer.Option(
+            "--output-dir", "-o", file_okay=False, help="Default: next to each motion file."
+        ),
+    ] = None,
+    fps: Annotated[
+        float | None,
+        typer.Option(
+            min=1.0,
+            max=240.0,
+            help=f"Samples per second (default {DEFAULT_FPS:g}, or {OPTIMIZED_FPS:g} with "
+            "--optimize).",
+            show_default=False,
+        ),
+    ] = None,
+    optimize: Annotated[
+        bool, typer.Option(help="Keep only the keyframes needed to stay within tolerances.")
+    ] = False,
+    rotation_tolerance: Annotated[
+        float, typer.Option(min=0.01, help="Max rotation error with --optimize (degrees).")
+    ] = DEFAULT_ROTATION_TOLERANCE,
+    position_tolerance: Annotated[
+        float, typer.Option(min=0.001, help="Max position error with --optimize (pixels).")
+    ] = DEFAULT_POSITION_TOLERANCE,
+    loop: Annotated[LoopMode, typer.Option(help="GeckoLib loop mode.")] = LoopMode.ONCE,
+    source_skeleton: Annotated[
+        str,
+        typer.Option(
+            help="Skeleton of the motions' MMD model, used to solve IK: a built-in name or "
+            "a skeleton .json file."
+        ),
+    ] = DEFAULT_SKELETON,
+    ik: Annotated[bool, typer.Option(help="Solve IK (legs, toes) like MMD does.")] = True,
+    duration_tolerance: Annotated[
+        float,
+        typer.Option(
+            min=0.0,
+            help="Flag a member whose converted length differs from the group's average by "
+            "more than this many seconds.",
+        ),
+    ] = DEFAULT_GROUP_DURATION_TOLERANCE,
+    strict: Annotated[bool, typer.Option(help="Fail when any warning is emitted.")] = False,
+) -> None:
+    """Convert several motions sharing one target rig, e.g. a dance crew performing together.
+
+    Each motion still converts fully independently - this is a batch convenience plus a
+    duration-mismatch check, not a notion of "show" or "performance": this tool has no
+    opinion on which runtime plays these back together or when each one starts.
+    """
+    sample_rate = fps if fps is not None else (OPTIMIZED_FPS if optimize else DEFAULT_FPS)
+    options = ConvertOptions(
+        fps=sample_rate,
+        tolerance=Tolerance(rotation_tolerance, position_tolerance) if optimize else None,
+        loop=loop,
+        source_skeleton=source_skeleton if ik else None,
+    )
+    try:
+        group = convert_group(motions, target, mapping, options, duration_tolerance)
+    except MikuMotionError as error:
+        raise _fail(error) from error
+
+    table = Table(title="Group members")
+    for column in ("motion", "bones", "samples", "length (s)", "warnings"):
+        table.add_column(column)
+    any_warnings = bool(group.diagnostics.warnings)
+    for member in group.members:
+        _print_diagnostics(member.result.diagnostics)
+        any_warnings = any_warnings or bool(member.result.diagnostics.warnings)
+        destination = (
+            (output_dir / f"{member.motion_path.stem}.animation.json")
+            if output_dir
+            else member.motion_path.with_name(f"{member.motion_path.stem}.animation.json")
+        )
+        destination.write_text(member.result.text, encoding="utf-8", newline="\n")
+        animation = member.result.animation
+        table.add_row(
+            member.motion_path.name,
+            str(len(animation.tracks)),
+            str(len(animation.times)),
+            f"{animation.length:.2f}",
+            str(len(member.result.diagnostics.warnings)) or "",
+        )
+    console.print(table)
+    _print_diagnostics(group.diagnostics)
+
+    if strict and any_warnings:
+        err_console.print("[bold red]error:[/] warnings present and --strict was given")
+        raise typer.Exit(code=1)
 
 
 @app.command(name="inspect-model")
