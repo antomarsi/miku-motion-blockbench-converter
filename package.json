@@ -1,6 +1,6 @@
 {
   "name": "miku-motion-converter",
-  "version": "0.2.0",
+  "version": "0.2.0-alpha",
   "private": true,
   "description": "Convert MikuMikuDance motion (.vmd) into Blockbench / GeckoLib animations: a Blockbench plugin and a CLI.",
   "license": "MIT",
