@@ -4,11 +4,23 @@
   "description": "Command-line converter: MMD motion (.vmd) to GeckoLib animation JSON.",
   "license": "MIT",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/antomarsi/miku-motion-blockbench-converter.git",
+    "directory": "packages/cli"
+  },
+  "keywords": ["mmd", "vmd", "geckolib", "blockbench", "minecraft", "animation"],
   "bin": {
     "miku-motion": "dist/miku-motion.mjs"
   },
   "files": ["dist"],
-  "dependencies": {
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
     "@miku-motion/core": "*"
   }
 }

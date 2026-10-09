@@ -1,117 +1,86 @@
-# miku-motion-converter
+# MMD Motion Importer for Blockbench
 
-Convert MikuMikuDance motion files (`.vmd`) into GeckoLib-compatible `.animation.json` files that you can preview and edit in Blockbench and play in Minecraft mods using GeckoLib.
+Import MikuMikuDance motion files (`.vmd`) into [Blockbench](https://www.blockbench.net/) as GeckoLib animations, on any model, and play them in Minecraft mods that use GeckoLib.
 
-```
-dance.vmd + model.bbmodel + mapping.json  →  miku-motion convert  →  dance.animation.json
-```
+It comes as a **Blockbench plugin** (desktop and web app) and as a **command-line tool** that does the same conversions from a terminal.
 
-> **Status:** this branch is being ported from a Python command-line tool to a **Blockbench plugin** (TypeScript) with a Node CLI. The port is in progress: conversion is complete (body, leg IK, simulated hair, face, performer groups) and matches the Python version; the model tools (prepare-model, init-mapping, apply-skin) are ported too, in the CLI and as plugin actions under Tools.
->
-> - **For the model tools**, use the Python version on the [`python` branch](../../tree/python). Everything below this notice describes that version.
-> - **To try the plugin:** `npm install`, then `npm run build`. Load `packages/plugin/dist/mmd_motion_importer.js` in Blockbench with File > Plugins > Load Plugin from File, then use File > Import > Import MMD Motion (.vmd).
-> - **Development checks:** `npm run check` (lint, type check, tests, build).
->
-> The axis and sign conventions are verified in Blockbench and in-game ([docs/conventions.md](docs/conventions.md)).
+- The whole body follows the dance, including knees bent by MMD's leg IK.
+- Hair, skirts and ties swing by simulation and stay out of the body.
+- Blinks and mouth shapes drive the model's face parts.
+- A built-in model with the exact shape of the Minecraft player dances in any Minecraft skin, with no setup.
+- Your own model works too: the plugin can fix its rig and work out which bone follows which part of the dance.
 
-## Install
+## Install the plugin
 
-Requires [uv](https://docs.astral.sh/uv/) (Python 3.12+ is installed automatically).
+The plugin isn't in Blockbench's plugin list yet. Until it is, load it yourself:
 
-```bash
-uv sync
-uv run miku-motion --help
-```
+- **From a release:** download `mmd_motion_importer.js` from the [Releases page](../../releases), then in Blockbench use File > Plugins > Load Plugin from File.
+- **From the address of the latest release:** File > Plugins > Load Plugin from URL, with `https://antomarsi.github.io/miku-motion-blockbench-converter/mmd_motion_importer.js`.
+- **From source:** `npm install`, then `npm run build`, and load `packages/plugin/dist/mmd_motion_importer.js`.
 
-## Planned usage
+It needs Blockbench 4.8 or newer. To export for a mod you also need the GeckoLib Models & Animations plugin, as for any GeckoLib model.
 
-```bash
-miku-motion inspect dance.vmd                 # frames, duration, animated bones, unsupported data
-miku-motion inspect-model model.bbmodel       # bone tree, pivots, rest rotations
-miku-motion convert dance.vmd --target model.bbmodel --mapping mappings/my-rig.json \
-    --output dance.animation.json [--fps 20] [--optimize]
-miku-motion convert-group crew-1.vmd crew-2.vmd crew-3.vmd \
-    --target model.bbmodel --mapping mappings/my-rig.json --output-dir out/
-miku-motion validate dance.animation.json --target model.bbmodel
-```
+## Quick start: a Minecraft skin that dances
 
-`convert-group` batches several motions against one shared target rig and mapping - e.g. a
-dance crew performing together - and flags any member whose converted length diverges from the
-group's average (`--duration-tolerance`, default 1s), since performers meant to move together
-are usually expected to share a timeline. Each motion is still converted fully independently;
-this tool has no notion of a "show" or who plays the result back together - that stays entirely
-the runtime's job.
+1. **File > New > New Minecraft Dancer.** Pick your skin `.png` (optional) and press Create. Slim or classic arms follow the skin.
+2. **File > Import > Import MMD Motion (.vmd).** Pick the `.vmd` and press Import VMD. The same button is at the top of the Animations panel.
+3. Press play in the Animate tab.
 
-A folder stands for every `.vmd` inside it, and its animations are named `<folder>_<motion>`:
+The dancer has hair (twintails, ponytail, long hair, a bob), skirt panels, a tie and sleeve cuffs as hidden groups. Show the ones you want; they swing with the dance.
 
-```bash
-miku-motion convert-group dances/crew/ --target model.bbmodel --mapping mappings/my-rig.json \
-    --output-dir out/crew/ --sync-length --formation origin
-```
+After an import, a report tells you what was left out or approximated, in plain words. Bone names in it are links that select the bone, and the "MMD Import Report" panel in the Animate tab keeps the last report.
 
-Two options adjust the motions as one performance:
+## The import dialog
 
-- `--sync-length` gives every animation the longest one's length, so they start and end
-  together; shorter ones hold their last pose.
-- `--formation` decides what happens to the stage positions stored in the motions:
-  - `keep` (default): every performer stands where its motion puts it.
-  - `center`: the whole group moves so that its middle starts at the origin.
-  - `origin`: every performer starts at its own origin, for runtimes that place the
-    performers themselves. The summary table lists where each one stood (x, z in pixels).
+- **Custom mapping:** a mapping `.json` for your own rig (see below). It is then saved with the project. Left empty, the built-in mapping of the dancer model is used.
+- **Source model:** optional. The MMD model (`.pmx`) the dance was made for. Its leg proportions make the feet land exactly. Only use the dance's own model: another one makes it worse.
+- **Reduce keyframes:** keeps only the keyframes needed to follow the dance. The animation gets much smaller and the motion between keys more accurate. Recommended.
+- **Samples per second:** 60 suits reduced keyframes; 20 keeps unreduced animations small.
+- **Solve leg IK:** works out knee bends from where the dance places the feet, as MMD does.
+- **Hair avoids the body:** keeps simulated hair and cloth from passing through the head and body.
+- **Loop:** play once, loop, or hold on the last frame.
 
-  Only horizontal positions change; heights are kept.
+Importing the same motion again replaces the animation of the same name. Imported animations aren't linked to a file on disk; export them from Blockbench as usual.
 
-The **mapping file** describes how MMD bones drive your model's bones. The converter itself never assumes a particular rig, so any Blockbench model can be targeted with its own mapping. [mappings/mikucraft.json](mappings/mikucraft.json) is a commented example:
+### Several performers
 
-- Each key is a **target** (Blockbench) bone. `from` lists the MMD bones whose rotations combine into it, parent to child.
+File > Import > Import MMD Performer Group (.vmd) takes one `.vmd` per performer and makes one animation each.
+
+- **Same length for all:** every animation gets the longest one's length, so the performers start and end together. Shorter ones hold their last pose.
+- **Stage positions:** the motions store where each performer stands. Keep them, centre the whole group on the origin, or start every performer at its own origin (for mods that place the performers themselves; the report lists where each one stood).
+
+## Your own model
+
+Everything here is under **Tools > MMD Motion Importer**.
+
+1. **Prepare Model for Dancing** checks the rig and shows the changes it would make before applying them. One undo restores the original. It can:
+   - add a root bone that carries the dance across the floor;
+   - attach the head and arms to the torso, for rigs where every part sits at the top level;
+   - move the legs out of the torso, so bending the upper body doesn't swing them;
+   - move the torso's pivot to the waist;
+   - split one-piece arms and legs at the elbow and knee, keeping the texture exact;
+   - add Blockbench IK handles to limbs and hair, for posing by hand (dances don't need them).
+2. **Generate Bone Mapping** finds the body parts from the model's shape (any naming style) and writes the mapping. Choose "Use for imports" to save it in the project.
+3. **Check Rig** adds a short test animation that turns one bone a single direction at a time and then moves the whole model, and tells you what each step should look like.
+4. **Edit Bone Mapping** shows every bone with the motion bones it follows, and the chains that swing as hair or cloth. Bones nothing drives are marked. You can also load or save the mapping as a file here.
+
+**Apply Minecraft Skin** changes the skin of a dancer model later.
+
+Face parts only get blink and mouth rules when their pivot sits on the part itself; otherwise scaling would slide them across the face, so they are left still and the dialog says which ones.
+
+## The mapping file
+
+A mapping describes how MMD bones drive your model's bones. The converter itself never assumes a particular rig. [mappings/template.json](mappings/template.json) is the built-in one; the same format is used by the plugin and the command line.
+
+- Each key under `bones` is a bone of **your model**. `from` lists the MMD bones whose rotations combine into it, parent to child.
 - `{"bone": "腰", "weight": -1}` applies a bone's rotation inverted. This reproduces MMD's waist-cancel bones.
 - `"translation": true` keeps the chain's movement, scaled by `units.translation_scale` (pixels per MMD unit).
-- `rest_correction` rotates the target's rest pose onto MMD's A-pose (e.g. arms that hang straight down).
+- `rest_correction` rotates the model's rest pose onto MMD's A-pose (for arms that hang straight down).
 - `ignore` silences warnings for bones you intentionally drop (globs allowed).
-
-### Template model (works with any Minecraft skin)
-
-[templates/](templates/) holds ready-to-dance GeckoLib models with the **exact proportions and skin layout of the Minecraft player**:
-
-- **Two variants:** `template.bbmodel` for classic skins (4 px arms, like Steve) and `template_slim.bbmodel` for slim skins (3 px arms, like Alex). Each has a matching mapping, [mappings/template.json](mappings/template.json) and [mappings/template_slim.json](mappings/template_slim.json).
-- **Skin layout:** the 64×128 skin's top 64×64 is a standard Minecraft skin (base and overlay layers, including the hat layer for hair). The extras live **outside** it, in the bottom half.
-- **The pieces:** each Minecraft box is cut at the joints without moving or resizing anything. The body becomes waist and chest, the arms upper arm, forearm and hand, the legs thigh, shin and foot. A separate hips group carries the legs.
-- **Extras:** twintails, ponytail, long hair, a short bob, skirt panels, a tie and sleeve cuffs, all **hidden by default** so a plain Minecraft skin looks right; unhide what you want. Hair, skirt and tie get secondary motion; the cuffs wrap the forearm, so they stay rigid with it.
-
-Put any Minecraft skin on it (64×64, or legacy 64×32):
-
-```bash
-miku-motion apply-skin my_skin.png -o my_model.bbmodel   # detects classic/slim arms
-miku-motion convert dance.vmd -t my_model.bbmodel -m mappings/template.json -o dance.animation.json
-```
-
-This writes `my_model.bbmodel` plus `my_model.png` (your skin on top, the extras below); use `mappings/template_slim.json` for slim skins. `uv run --with pillow python tools/make_template.py` regenerates the templates and their default skins.
-
-### Preparing any model
-
-Most Blockbench models weren't built for dancing: limbs are one piece, legs hang off the torso, the body pivots at the neck. The converter finds the body parts from the geometry (any naming style) and fixes the rig for you:
-
-```bash
-miku-motion prepare-model model.bbmodel --check   # what's missing (writes nothing)
-miku-motion prepare-model model.bbmodel           # writes model.prepared.bbmodel
-miku-motion init-mapping model.prepared.bbmodel -o mappings/model.json
-miku-motion convert dance.vmd -t model.prepared.bbmodel -m mappings/model.json -o dance.animation.json
-```
-
-`prepare-model` never changes the original file. It can:
-
-- **Add a root group** that carries the dance across the floor.
-- **Attach the head and arms to the torso**, for flat rigs where every part sits at the top level.
-- **Move the legs out of the torso**, so bending the upper body doesn't swing them.
-- **Move the torso's pivot to the waist.**
-- **Split one-piece arms and legs at the elbow and knee.** The texture stays exact: split cubes switch to per-face UVs.
-- **Add Blockbench IK to hair chains and limbs:** a tip locator, an IK null and a pole null, so you can pose them by hand in Blockbench.
-
-`init-mapping` writes the matching mapping. Each bone's MMD chain is derived from the standard MMD skeleton, arm rest corrections are measured from the model, the translation scale comes from its height, and hair and cloth chains are added as secondary motion. Review the result; a model with unusual parts may need a few edits.
 
 ### Hair and other secondary motion
 
-MMD hair, skirts and ties move by physics, which a `.vmd` doesn't store. Instead, list springy chains of your model's bones in the mapping, and the converter simulates them from the body's motion. It doesn't need any IK set up in Blockbench: twintails, a single back ponytail, short hair, a tie or a skirt are all just chains of one or more bones.
+MMD hair, skirts and ties move by physics, which a `.vmd` doesn't store. Instead, the mapping lists springy chains of your model's bones, and the converter simulates them from the body's motion. No IK setup in Blockbench is needed.
 
 ```json
 "secondary_motion": [
@@ -127,42 +96,78 @@ MMD hair, skirts and ties move by physics, which a `.vmd` doesn't store. Instead
 - **`gravity`:** 1 = real gravity at Minecraft scale.
 - **`offset`:** shifts the chain's resting shape, in pixels at the tip. For example, `[0, 0, 4]` hangs hair 4 px further back (+Z is the back).
 - **`tip`:** where the last bone ends. By default it's measured from that bone's cubes, so one-bone chains need no extra setup.
-- **`collide`:** the body parts the chain can't pass through. By default the head and trunk (head, chest, torso, hips) are found from the model's shape. Give a list of bone names to choose them yourself (add the arms, say), or `false` to let the chain pass through everything. Each part is a box around its cubes. `--no-collision` turns this off for a whole conversion.
+- **`collide`:** the body parts the chain can't pass through. By default the head and trunk (head, chest, torso, hips) are found from the model's shape. Give a list of bone names to choose them yourself (add the arms, say), or `false` to let the chain pass through everything. Each part is a box around its cubes.
 - **`collision_padding`:** pixels kept between the chain's joints and those parts. By default it's half the thickness of the chain's pieces, and never so much that the resting hair would be pushed away.
 
-`miku-motion inspect-model model.bbmodel [-m mapping.json]` lists a model's bones and suggests hair, cloth and accessory chains it finds by name and shape, as a snippet you can paste into the mapping. Conversions also mention unconfigured candidates (info MM303).
+### Face
 
-### Smaller, smoother files
+`morphs` lists rules that turn MMD's facial morphs (blink, vowels) into scale, position, rotation or visibility of your model's face bones. Generate Bone Mapping writes them for bones named like `eyelid_left`, `eyes`, `mouth` or `mouth_a` inside the head; the template mapping shows every form.
 
-`--optimize` keeps only the keyframes GeckoLib needs, within a tolerance (default 1°, `--rotation-tolerance`; positions 0.05 px, `--position-tolerance`):
+## Command line
 
-- **Sampling:** the motion is sampled at 60 fps by default, and keys are dropped wherever GeckoLib's linear blend between the remaining keys stays within tolerance of the real motion.
-- **Accuracy:** the check is on the true 3D rotation, including halfway between samples. It catches the detours that plain sampling produces near gimbal lock, where a bone turns about 90° sideways and its angles swing wildly.
-- **Size:** dense, motion-capture-like dances shrink by roughly 25–60% depending on tolerance. Hand-keyed motions shrink much more.
-- **Report:** the conversion prints the key count before and after, and the worst error (info MM401). Warning MM402 means some fast moves still exceed the tolerance; a higher `--fps` helps.
+The same conversions without Blockbench. It needs Node 20 or newer.
 
-### Leg IK
+```bash
+npm install && npm run build
+node packages/cli/dist/miku-motion.mjs --help
+```
 
-Most dances move the legs through MMD's IK: the motion stores where the feet go, and MMD bends the knees to reach them. The converter solves this IK the way MMD does, so knees bend and feet stay planted.
+The examples below write `miku-motion` for `node packages/cli/dist/miku-motion.mjs`. Each release also attaches the tool as a single file.
 
-- Solving needs the dancing model's bone positions, which a `.vmd` doesn't contain. By default a built-in skeleton with standard MMD proportions is used (`--source-skeleton mmd-standard`).
-- You don't need the model. The built-in skeleton works for most dances.
-- If warning MM106 says feet miss their targets, the real model's legs differ from the built-in ones. If you have the `.pmx` model the motion was made for, pass it: `--source-skeleton model.pmx`. Only its bones and IK settings are read; the mesh, textures and physics are skipped.
-  - Use the motion's own model. A different model can make the feet miss more, not less.
-  - A skeleton `.json` works too (format: [src/miku_motion/data/skeletons/mmd-standard.json](src/miku_motion/data/skeletons/mmd-standard.json)).
-- Toe IK only aims the foot at its goal, so it's judged by its aim, not by distance.
-- `--no-ik` turns solving off.
+```bash
+miku-motion inspect dance.vmd                    # frames, duration, animated bones, unsupported data
+miku-motion inspect-model model.bbmodel          # bone tree, pivots, suggested hair chains
+miku-motion convert dance.vmd -t model.bbmodel -m mappings/my-rig.json -o dance.animation.json --optimize
+miku-motion convert-group dances/crew/ -t model.bbmodel -m mappings/my-rig.json -o out/crew/ \
+    --sync-length --formation origin
+miku-motion validate dance.animation.json -t model.bbmodel
+```
+
+For a model of your own:
+
+```bash
+miku-motion prepare-model model.bbmodel --check  # what's missing (writes nothing)
+miku-motion prepare-model model.bbmodel          # writes model.prepared.bbmodel
+miku-motion init-mapping model.prepared.bbmodel -o mappings/model.json
+```
+
+For a Minecraft skin on the built-in model:
+
+```bash
+miku-motion apply-skin my_skin.png -o my_model.bbmodel   # detects classic or slim arms
+miku-motion convert dance.vmd -t my_model.bbmodel -m mappings/template.json -o dance.animation.json
+```
+
+Use `mappings/template_slim.json` for slim skins. `miku-motion <command> --help` lists every option.
+
+Notes that apply to both the plugin and the command line:
+
+- **Keyframe reduction (`--optimize`):** the motion is sampled at 60 fps, and keys are dropped wherever GeckoLib's blend between the remaining keys stays within tolerance (1° and 0.05 px by default). The check is on the true 3D rotation, including halfway between samples, which catches the detours plain sampling produces when a bone turns about 90° sideways. Dense, motion-capture-like dances shrink by roughly 25–60%; hand-keyed ones much more. Warning MM402 means some fast moves still exceed the tolerance.
+- **Leg IK:** solving needs the dancing model's bone positions, which a `.vmd` doesn't contain. A built-in skeleton with standard MMD proportions is used by default and works for most dances. If warning MM106 says feet miss their targets, pass the dance's own model: `--source-skeleton model.pmx` (only its bones and IK settings are read). A skeleton `.json` works too ([format](packages/core/src/data/skeletons/mmd-standard.json)). `--no-ik` turns solving off.
+- **Groups:** in a folder given to `convert-group`, animations are named `<folder>_<motion>`. Only horizontal stage positions change with `--formation`; heights are kept.
 
 ## Scope
 
-Supported: skeletal motion (bone rotation and translation with MMD interpolation curves, resampled at a fixed rate), leg/toe IK, facial morphs through mapping rules, and simulated hair/cloth motion. Not supported: camera, lights, and MMD's own physics. Every dropped or approximated feature is reported as a warning.
+Supported: skeletal motion (bone rotation and translation with MMD interpolation curves, resampled at a fixed rate), leg and toe IK, facial morphs through mapping rules, and simulated hair and cloth motion.
+
+Not supported: camera, lights, and MMD's own physics. Sound is not written either; add music in Blockbench. Every dropped or approximated feature is reported.
+
+The converter knows nothing about any particular mod. Its only output is the animation.
 
 ## Development
 
 ```bash
-uv run pytest
-uv run ruff check . && uv run mypy
+npm install
+npm run check    # lint, type check, tests, build
 ```
+
+- `packages/core`: the conversion, in pure TypeScript (no Blockbench, browser or Node APIs).
+- `packages/plugin`: the Blockbench plugin, bundled into one file.
+- `packages/cli`: the command-line tool.
+- `reference/`: outputs of the original Python version on synthetic inputs; the tests compare against them.
+- [docs/conventions.md](docs/conventions.md) records the axis and sign conventions, verified in Blockbench and in-game. [docs/verification.md](docs/verification.md) is the checklist for re-verifying them.
+
+The original Python command-line version is kept on the [`python` branch](../../tree/python). It also holds the generator of the template models (`tools/make_template.py`).
 
 Put your own models and motions in `assets/`. That folder is git-ignored, so real assets never end up in the repository.
 

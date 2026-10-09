@@ -11,10 +11,10 @@ Automated tests prove the converter is internally consistent. Only Blockbench (a
 
 ## Step 1: calibration (sign conventions)
 
-Generate a motion that moves one axis at a time, then convert it:
+In the plugin, Tools > MMD Motion Importer > Check Rig adds this test animation directly (pick the head). From the command line, generate a motion that moves one axis at a time, then convert it (`miku-motion` stands for `node packages/cli/dist/miku-motion.mjs`):
 
 ```bash
-miku-motion dev synth-calibration -o out/calibration.vmd --rotate 頭 --move センター
+miku-motion synth-calibration -o out/calibration.vmd --rotate 頭 --move センター
 miku-motion convert out/calibration.vmd -t assets/models/Mikucraft.bbmodel \
     -m mappings/mikucraft.json -o out/calibration.animation.json
 ```
@@ -30,13 +30,13 @@ Each step reaches its pose at the listed time and returns to rest one second lat
 | 9 s | body +2 Y | whole model rises (3.2 px with scale 1.6) | Y position sign / scale |
 | 11 s | body +2 Z | whole model moves **backward** (away from where it faces) | Z position sign |
 
-If a row fails, flip the corresponding sign in `geckolib/encoding.py`, update [conventions.md](conventions.md) and the golden file (`pytest --update-golden`), and add a regression test.
+If a row fails, flip the corresponding sign in `packages/core/src/geckolib/encoding.ts`, update [conventions.md](conventions.md), and add a regression test. The parity tests against `reference/` will then fail by design: those dumps come from the Python version, which shares the old convention.
 
-If *every* rotation looks mirrored, the assumption about how MMD applies quaternions is wrong instead. Fix that in `conversion/coordinates.py`, not in the encoder.
+If *every* rotation looks mirrored, the assumption about how MMD applies quaternions is wrong instead. Fix that in `packages/core/src/conversion/coordinates.ts`, not in the encoder.
 
 ## Step 2: arm wave and rest pose
 
-Convert a motion that raises the left arm (e.g. from `tests/integration/test_convert.py`, or any VMD):
+Convert a motion that raises the left arm (e.g. `reference/cases/arm_wave/motion.vmd`, or any VMD):
 
 - The **model's left** arm moves (not the right).
 - At rest the arms sit in MMD's A-pose, angled roughly 37° below horizontal (that's the `rest_correction` in the mapping). If they're too high or low, tune `rest_correction.euler_deg` on the arm entries.

@@ -6,9 +6,9 @@ This page records every convention the converter relies on and whether it has be
 
 | Space | Handedness | Up | Model faces | Model's left | Units | Owner |
 |---|---|---|---|---|---|---|
-| MMD (VMD/PMX) | left | +Y | −Z | +X | ≈ 8 cm | `conversion/coordinates.py` |
+| MMD (VMD/PMX) | left | +Y | −Z | +X | ≈ 8 cm | `packages/core/src/conversion/coordinates.ts` |
 | **Canonical** (= Blockbench model space) | right | +Y | −Z | −X | pixel (1/16 block) | — |
-| GeckoLib / Bedrock animation file | see below | | | | pixel | `geckolib/encoding.py` |
+| GeckoLib / Bedrock animation file | see below | | | | pixel | `packages/core/src/geckolib/encoding.ts` |
 
 MMD → canonical is an **X-mirror**: `p' = (−x, y, z)`, `q' = (qx, −qy, −qz, qw)`. The mirror corrects the handedness and also puts the model's left at −X.
 
@@ -17,7 +17,7 @@ Status: **verified** (2026-09-29). Facing and left/right were confirmed from rea
 ## Rotation keyframes (GeckoLib / Blockbench)
 
 - Euler order ZYX: `R = Rz · Ry · Rx` (X applied first). **Verified in Blockbench.**
-- A keyframe is a delta **added per Euler component** to the bone's rest rotation. It is not composed as a quaternion. The converter handles this by subtracting the rest Euler angles in `geckolib/encoding.py`. **Assumed; not yet exercised**: the Mikucraft rig currently has no mapped bone with a rest rotation.
+- A keyframe is a delta **added per Euler component** to the bone's rest rotation. It is not composed as a quaternion. The converter handles this by subtracting the rest Euler angles in `packages/core/src/geckolib/encoding.ts`. **Assumed; not yet exercised**: the Mikucraft rig currently has no mapped bone with a rest rotation.
 - Bedrock sign convention relative to Blockbench's internal space: X and Y are negated, Z is kept (`ROTATION_SIGNS = (−1, −1, +1)`). **Verified in Blockbench** (calibration steps 1–3).
 - Rest rotations in `.bbmodel` groups are read as canonical ZYX degrees with no sign changes. **Assumed; not yet exercised.**
 

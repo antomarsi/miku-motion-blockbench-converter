@@ -7,6 +7,7 @@ import { BasisChange, MMD_TO_CANONICAL } from "../src/conversion/coordinates";
 import { retarget } from "../src/conversion/retarget";
 import { Diagnostics } from "../src/diagnostics";
 import * as encoding from "../src/geckolib/encoding";
+import { validateAnimation } from "../src/geckolib/validate";
 import { formatNumber, formatTime, renderAnimation } from "../src/geckolib/writer";
 import * as quat from "../src/geometry/quat";
 import { resolve } from "../src/mapping/resolve";
@@ -213,5 +214,49 @@ describe("retargeting", () => {
   it("leaves a bone at rest when its source has no keys", () => {
     const result = convert({ Root: "missing", Chest: "a" }, { a: quat.IDENTITY });
     expect(quat.sameRotation(rotationOf(result, "Root"), quat.IDENTITY)).toBe(true);
+  });
+});
+
+describe("validateAnimation", () => {
+  const skeleton = new Skeleton([makeBone("root", undefined), makeBone("head", "root")]);
+  const valid = (): Record<string, unknown> => ({
+    format_version: "1.8.0",
+    animations: {
+      "animation.model.dance": {
+        loop: "hold_on_last_frame",
+        animation_length: 1,
+        bones: {
+          root: { position: [0, 1, 0] },
+          head: { rotation: { "0.0": [0, 0, 0], "0.5": { post: [10, 0, 0] }, "1.0": [0, 0, 0] } },
+        },
+      },
+    },
+  });
+
+  it("accepts a well-formed file and counts its keys", () => {
+    const check = validateAnimation(valid(), skeleton);
+    expect(check.issues).toEqual([]);
+    expect(check.animations).toEqual([{ name: "animation.model.dance", length: 1, bones: 2, keyframes: 4 }]);
+  });
+
+  it("reports bones the model lacks, bad values and late keys", () => {
+    const document = valid();
+    const animation = (document.animations as Record<string, { bones: Record<string, unknown> }>)["animation.model.dance"]!;
+    animation.bones.tail = { rotation: { "0.0": [0, 0] } };
+    animation.bones.head = { rotation: { "0.0": [0, 0, 0], "2.0": [1, 0, 0] }, colour: [1, 1, 1] };
+    const messages = validateAnimation(document, skeleton).issues.map((issue) => `${issue.severity}: ${issue.message}`);
+    expect(messages).toEqual([
+      "warning: keyframe at 2.0 s is after the end of the animation (1 s)",
+      "warning: not a rotation, position or scale channel",
+      "error: keyframe at 0.0 s is not a vector of three numbers",
+      "error: 1 animated bones are not in the model: tail",
+    ]);
+    expect(validateAnimation(document).issues).toHaveLength(3); // no model: bones are not checked
+  });
+
+  it("rejects files that are not animations", () => {
+    expect(validateAnimation([]).issues[0]!.message).toBe("not a JSON object");
+    expect(validateAnimation({ format_version: "1.8.0" }).issues[0]!.message).toBe('no "animations" object');
+    expect(validateAnimation({ format_version: "1.8.0", animations: {} }).issues[0]!.message).toBe("contains no animation");
   });
 });

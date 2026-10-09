@@ -5,6 +5,7 @@ import { convertCommand, convertGroupCommand } from "./commands/convert";
 import { inspect } from "./commands/inspect";
 import { inspectModel } from "./commands/inspectModel";
 import { applySkinCommand, initMappingCommand, prepareModelCommand } from "./commands/model";
+import { validateCommand } from "./commands/validate";
 import { UsageError } from "./io";
 
 const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "dev";
@@ -22,6 +23,7 @@ Commands:
   prepare-model <model.bbmodel>  Fix a rig for dancing and add Blockbench IK (writes a copy)
   init-mapping <model.bbmodel>   Generate a starter mapping for a model
   apply-skin <skin.png>          Make the template model wear a Minecraft skin
+  validate <file.animation.json> Check an animation file, optionally against a model
   synth-calibration              Write a test motion that moves one axis at a time
 
 Options:
@@ -37,6 +39,7 @@ const COMMANDS: Record<string, (argv: string[]) => number> = {
   "prepare-model": prepareModelCommand,
   "init-mapping": initMappingCommand,
   "apply-skin": applySkinCommand,
+  validate: validateCommand,
   "synth-calibration": synthCalibrationCommand,
 };
 
