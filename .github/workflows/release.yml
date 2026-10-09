@@ -5,6 +5,9 @@
 #
 # The tag must match the version in package.json (v0.3.0 <-> 0.3.0).
 #
+# The release's description comes from .github/release-notes/<tag>.md when that file exists
+# (write it before tagging); GitHub's generated change list is added below it.
+#
 # Two things are published:
 # - a GitHub release with the plugin file and the command-line tool attached
 # - the plugin on GitHub Pages, at a fixed URL for Blockbench's "Load Plugin from URL":
@@ -50,6 +53,8 @@ jobs:
       - run: npm run build
       - name: Package the command-line tool
         run: tar -czf miku-motion-cli.tgz -C packages/cli/dist miku-motion.mjs
+      - name: Pick the release description
+        run: cp ".github/release-notes/${GITHUB_REF_NAME}.md" release-notes.md 2>/dev/null || : > release-notes.md
       - name: Assemble the Pages site
         run: |
           mkdir site
@@ -65,6 +70,7 @@ jobs:
           path: |
             packages/plugin/dist/mmd_motion_importer.js
             miku-motion-cli.tgz
+            release-notes.md
 
   pages:
     needs: build
@@ -91,6 +97,7 @@ jobs:
           name: release-files
       - uses: softprops/action-gh-release@v2
         with:
+          body_path: release-notes.md
           generate_release_notes: true
           fail_on_unmatched_files: true
           prerelease: ${{ contains(github.ref_name, '-') }}
