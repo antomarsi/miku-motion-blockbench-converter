@@ -1,6 +1,6 @@
 {
   "name": "@miku-motion/cli",
-  "version": "0.2.0-alpha",
+  "version": "0.2.1-alpha",
   "description": "Command-line converter: MMD motion (.vmd) to GeckoLib animation JSON.",
   "license": "MIT",
   "type": "module",
