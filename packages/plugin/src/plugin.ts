@@ -124,9 +124,23 @@ BBPlugin.register(PLUGIN_ID, {
       click() {},
     });
     MenuBar.addAction(toolsMenu, "tools");
-    MenuBar.addAction(dancerAction, "file.new");
     MenuBar.addAction(about, "help");
     extras = [registerMappingProperty(), createReportPanel()];
+    // File > New lists formats and model loaders, not actions; a loader also shows on the
+    // start screen. Blockbench versions without loaders keep the entry under Tools.
+    if (typeof ModelLoader !== "undefined") {
+      extras.push(
+        new ModelLoader(`${PLUGIN_ID}_new_dancer`, {
+          name: "Minecraft Dancer",
+          description:
+            "A Minecraft player cut at the joints so it can dance, wearing your skin. " +
+            "MMD motions (.vmd) import on it with no setup.",
+          icon: "person_add",
+          show_on_start_screen: true,
+          onStart: newDancer,
+        }),
+      );
+    }
     // The row of buttons at the top of the Animations panel, after its own import button.
     const animations = Toolbars.animations as Toolbar | undefined;
     if (animations && !animations.children.includes(importAction)) animations.add(importAction, 3);
