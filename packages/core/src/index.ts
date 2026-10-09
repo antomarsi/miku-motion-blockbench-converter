@@ -25,6 +25,7 @@ export { parseVmd } from "./vmd/parser";
 export * from "./vmd/summary";
 export * from "./vmd/types";
 export * from "./geckolib/validate";
+export * from "./rig/reach";
 export * from "./vmd/synth";
 export { writeVmd } from "./vmd/writer";
 

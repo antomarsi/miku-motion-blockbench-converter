@@ -11,7 +11,7 @@ import type { ChainSpec, Collider } from "../conversion/secondary";
 import keywordData from "../data/secondary_keywords.json";
 import { MappingError } from "../errors";
 import type { Vec3 } from "../geometry/quat";
-import { detectRoles } from "../model/roles";
+import { detectRoles, type Roles } from "../model/roles";
 import { unknownTargets } from "./resolve";
 import type { MappingFile, SecondaryMotionSpec } from "./schema";
 
@@ -152,7 +152,23 @@ function colliderFor(bone: Bone, points: readonly Vec3[], padding: number): Coll
 export interface SecondaryOptions {
   /** Keep chains out of the body (default). `false` ignores every chain's `collide`. */
   readonly collide?: boolean;
+  /**
+   * Also keep cloth out of the legs (default). `false` leaves only the head and trunk
+   * as the default obstacles.
+   */
+  readonly limbs?: boolean;
 }
+
+/**
+ * Which limbs a chain avoids by default, by its kind: skirts meet legs.
+ *
+ * Hair against arms was measured too and left out: hair that hangs beside the arms rests
+ * inside their space, so it is exempt there anyway, and the rest gained little for a
+ * jerkier motion. A chain can still list arm bones in its own `collide`.
+ */
+const LIMB_OBSTACLES: Readonly<Record<string, "arms" | "legs">> = { cloth: "legs" };
+/** Upper and lower segment; hands and feet are small and fast, so they are left out. */
+const LIMB_SEGMENTS = 2;
 
 /** Validate `secondary_motion` chains against the target skeleton. */
 export function resolveSecondary(
@@ -163,17 +179,18 @@ export function resolveSecondary(
 ): ChainSpec[] {
   const chains: ChainSpec[] = [];
   const swinging = new Set(mapping.secondary_motion.flatMap((spec) => spec.bones));
-  let trunk: string[] | undefined;
-  /** The head and trunk, found from the model's shape. */
-  const bodyParts = (): string[] => {
-    if (!trunk) {
+  let body: Roles | undefined;
+  /** The head and trunk, plus the limbs a chain of this kind meets, from the model's shape. */
+  const bodyParts = (preset: string): string[] => {
+    if (!body) {
       const loose = new Set([...swinging, ...suggestChains(skeleton, mapping).flatMap((s) => s.bones)]);
-      const roles = detectRoles(skeleton, loose);
-      trunk = [roles.head, roles.chest, roles.torso, roles.hips].filter(
-        (name): name is string => name !== undefined,
-      );
+      body = detectRoles(skeleton, loose);
     }
-    return trunk;
+    const limbs = options.limbs !== false ? LIMB_OBSTACLES[preset] : undefined;
+    const segments = limbs ? [...body[limbs].values()].flatMap((limb) => limb.slice(0, LIMB_SEGMENTS)) : [];
+    return [body.head, body.chest, body.torso, body.hips, ...segments].filter(
+      (name): name is string => name !== undefined,
+    );
   };
   const used = new Set<string>();
   const driven = new Set(Object.keys(mapping.bones));
@@ -233,7 +250,7 @@ export function resolveSecondary(
         );
       }
       const padding = spec.collision_padding ?? chainPadding(skeleton, spec.bones);
-      for (const name of named ?? bodyParts()) {
+      for (const name of named ?? bodyParts(spec.preset ?? DEFAULT_PRESET)) {
         if (swinging.has(name)) continue;
         const collider = colliderFor(skeleton.get(name), points, padding);
         if (collider) colliders.push(collider);

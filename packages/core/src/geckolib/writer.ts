@@ -91,13 +91,28 @@ export function channel(times: Float64Array, values: Vec3Array, rest = 0): Chann
   return out;
 }
 
+interface BuiltDocument {
+  document: { [key: string]: DocumentNode };
+  stats: WriteStats;
+}
+
 /** The GeckoLib document; with a `tolerance`, channels are reduced (see `optimize.ts`). */
-export function buildDocument(
+export function buildDocument(animation: Animation, skeleton: Skeleton, tolerance?: Tolerance): BuiltDocument {
+  const steps = buildDocumentSteps(animation, skeleton, tolerance);
+  for (;;) {
+    const step = steps.next();
+    if (step.done) return step.value;
+  }
+}
+
+/** `buildDocument` in steps: yields the share of bones done (0..1) after each bone. */
+export function* buildDocumentSteps(
   animation: Animation,
   skeleton: Skeleton,
   tolerance?: Tolerance,
-): { document: { [key: string]: DocumentNode }; stats: WriteStats } {
+): Generator<number, BuiltDocument> {
   const { times } = animation;
+  let visited = 0;
   const stats: WriteStats = { denseKeys: 0, keys: 0, maxRotationError: 0, maxPositionError: 0 };
   const bones: { [key: string]: DocumentNode } = {};
   const count = (keys: Channel): void => {
@@ -106,6 +121,7 @@ export function buildDocument(
     stats.keys += written;
   };
   for (const bone of skeleton) {
+    yield visited++ / skeleton.length;
     const track = animation.tracks.get(bone.name);
     if (!track) continue;
     const channels: { [key: string]: DocumentNode } = {};
@@ -207,6 +223,16 @@ export function renderAnimation(
   tolerance?: Tolerance,
 ): { text: string; stats: WriteStats } {
   const { document, stats } = buildDocument(animation, skeleton, tolerance);
+  return { text: renderDocument(document), stats };
+}
+
+/** `renderAnimation` in steps: yields the share done (0..1). */
+export function* renderAnimationSteps(
+  animation: Animation,
+  skeleton: Skeleton,
+  tolerance?: Tolerance,
+): Generator<number, { text: string; stats: WriteStats }> {
+  const { document, stats } = yield* buildDocumentSteps(animation, skeleton, tolerance);
   return { text: renderDocument(document), stats };
 }
 

@@ -75,8 +75,22 @@ const WRITERS: Partial<Record<Code, Writer>> = {
     title: `${count(d.bones.length, "moving part", "moving parts")} of the dance had nowhere to go`,
     text:
       "The motion animates these bones, but the mapping doesn't connect them to any bone " +
-      "of your model, so their movement is left out. Small parts like toes are fine to " +
-      "skip; for anything bigger, add it to a custom mapping.",
+      "of your model, so their movement is left out. Small parts like fingers are fine " +
+      "to skip; for anything bigger, add it to a custom mapping.",
+  }),
+  [Code.END_BONES_UNMAPPED]: (d) => ({
+    title: `${count(d.bones.length, "tip bone", "tip bones")} had no part to move`,
+    text:
+      "The motion animates the very ends of some limbs (usually the toe tips), and your " +
+      "model has no separate part there. Nothing visible is lost.",
+  }),
+  [Code.SOURCE_TREE_FOLLOWED]: () => ({
+    title: "Adjusted to the source model's skeleton",
+    text:
+      "The source model you chose connects some bones differently from a standard MMD " +
+      "model (a twist that only partly reaches the next bone), so those parts were " +
+      "weighted to match. Nothing to do.",
+    namesLabel: "bones of your model",
   }),
   [Code.IK_DRIVEN_BONES]: () => ({
     title: "Some foot or hand targets could not be followed",

@@ -1,14 +1,11 @@
 /// <reference types="blockbench-types" />
 
-/** The import dialogs: one motion, or several performers' motions as a group. */
+/** The import dialog: one motion and its options. */
 
 import {
-  checkGroupLabels,
-  convert,
-  convertGroup,
+  convertSteps,
   DEFAULT_FPS,
   DEFAULT_TOLERANCE,
-  Formation,
   LoopMode,
   MikuMotionError,
   OPTIMIZED_FPS,
@@ -26,8 +23,9 @@ import {
   rememberedCustomMapping,
   type ChosenMapping,
 } from "./mappingStore";
+import { Cancelled, withProgress } from "./progress";
 import { projectModel } from "./project";
-import { escapeHtml, showReport, withSharedPart, type ReportPart } from "./report";
+import { escapeHtml, panelActions, showReport } from "./report";
 
 const TITLE = "MMD Motion Importer";
 
@@ -38,8 +36,6 @@ const last = {
   ik: true,
   collide: true,
   loop: LoopMode.ONCE as LoopMode,
-  formation: Formation.KEEP as Formation,
-  syncLength: true,
 };
 
 export function showError(error: unknown): void {
@@ -131,7 +127,7 @@ const SHARED_PLACEHOLDERS = {
   model: "Optional: the .pmx model the dance was made for",
 };
 
-/** The form fields both dialogs share, after their own file field. */
+/** The option fields, after the motion's file field. */
 function sharedFields(): Record<string, object> {
   return {
     mapping: {
@@ -217,8 +213,44 @@ interface Prepared {
   readonly modelName: string | undefined;
 }
 
+/** What the last import of a project used, so it can be repeated without the dialogs. */
+interface LastImport {
+  readonly file: FileResult;
+  /** The project's own mapping was used (not the built-in one). */
+  readonly projectMapping: boolean;
+  readonly modelFile: FileResult | undefined;
+}
+
+const lastImports = new Map<string, LastImport>();
+
+function projectKey(): string {
+  return Project ? Project.uuid : "";
+}
+
+/** Everything a conversion needs, from the remembered settings and the given files. */
+function prepared(chosen: ChosenMapping, modelFile: FileResult | undefined): Prepared {
+  const modelName = modelFile ? baseName(modelFile.name) : undefined;
+  // Leaving `sourceRig` out means the built-in skeleton; `null` means no IK at all.
+  const rig = !last.ik
+    ? { sourceRig: null }
+    : modelFile && modelName
+      ? { sourceRig: pmxRig(bytes(modelFile), stem(modelName), modelName) }
+      : {};
+  const options: ConvertOptions = {
+    fps: last.fps,
+    loop: last.loop,
+    tolerance: last.optimize ? DEFAULT_TOLERANCE : undefined,
+    collide: last.collide,
+    ...rig,
+  };
+  return { options, chosen, modelName };
+}
+
 /** Read the optional files, then hand over everything a conversion needs. */
-function prepare(form: SharedForm, onReady: (prepared: Prepared) => void): void {
+function prepare(
+  form: SharedForm,
+  onReady: (ready: Prepared, used: Pick<LastImport, "projectMapping" | "modelFile">) => void,
+): void {
   last.optimize = form.optimize ?? true;
   last.fps = Math.min(Math.max(Number(form.fps) || DEFAULT_FPS, 1), 240);
   last.ik = form.ik ?? true;
@@ -236,21 +268,7 @@ function prepare(form: SharedForm, onReady: (prepared: Prepared) => void): void 
           // An emptied field means "the built-in mapping, this time": the project keeps its own.
           chosen = defaultMapping(projectModel());
         }
-        const modelName = modelFile ? baseName(modelFile.name) : undefined;
-        // Leaving `sourceRig` out means the built-in skeleton; `null` means no IK at all.
-        const rig = !last.ik
-          ? { sourceRig: null }
-          : modelFile && modelName
-            ? { sourceRig: pmxRig(bytes(modelFile), stem(modelName), modelName) }
-            : {};
-        const options: ConvertOptions = {
-          fps: last.fps,
-          loop: last.loop,
-          tolerance: last.optimize ? DEFAULT_TOLERANCE : undefined,
-          collide: last.collide,
-          ...rig,
-        };
-        onReady({ options, chosen, modelName });
+        onReady(prepared(chosen, modelFile), { projectMapping: mappingFile !== undefined, modelFile });
       } catch (error) {
         showError(error);
       }
@@ -258,17 +276,63 @@ function prepare(form: SharedForm, onReady: (prepared: Prepared) => void): void 
   });
 }
 
-/** Let the "working" message paint before a long conversion blocks the window. */
-function runSoon(work: () => void): void {
-  Blockbench.showQuickMessage("Converting the motion...", 1500);
-  setTimeout(() => {
-    try {
-      work();
-    } catch (error) {
-      showError(error);
-    }
-  }, 30);
+/** Run a conversion, showing errors in a dialog; a cancelled one ends quietly. */
+function run(work: () => Promise<void>): void {
+  work().catch((error: unknown) => {
+    if (error instanceof Cancelled) Blockbench.showQuickMessage("Import cancelled", 2000);
+    else showError(error);
+  });
 }
+
+async function convertOne(file: FileResult, ready: Prepared): Promise<void> {
+  const motion = motionInput(file);
+  const result = await withProgress(
+    `Importing ${motion.path}`,
+    convertSteps(
+      { motion, model: projectModel(), mapping: ready.chosen.mapping, mappingPath: ready.chosen.source },
+      ready.options,
+    ),
+  );
+  const { animation } = result;
+  const loaded = addAnimations([{ document: JSON.parse(result.text), name: animation.name }], "Import MMD motion");
+  if (loaded.animations[0]) showAnimation(loaded.animations[0]);
+  showReport({
+    headline:
+      `${loaded.replaced ? "Updated" : "Imported"} "${motion.path}": ` +
+      `${friendlyDuration(animation.length)}, ${animation.tracks.size} bones animated`,
+    details: `Animation: ${animation.name} · ${details(ready)}`,
+    parts: [{ diagnostics: result.diagnostics.items }],
+  });
+}
+
+/**
+ * Convert the project's last motion again with the same settings, picking up changes to
+ * the model and to the project's mapping.
+ */
+export function reimport(): void {
+  try {
+    const model = projectModel();
+    const again = lastImports.get(projectKey());
+    if (!again) {
+      Blockbench.showQuickMessage("Nothing to re-import yet: import a motion in this project first", 3000);
+      return;
+    }
+    const stored = again.projectMapping ? rememberedCustomMapping() : undefined;
+    const ready = prepared(stored ? customMapping(stored) : defaultMapping(model), again.modelFile);
+    run(() => convertOne(again.file, ready));
+  } catch (error) {
+    showError(error);
+  }
+}
+
+/** Open the import dialog again on the project's last motion, to change its settings. */
+export function adjustImport(): void {
+  const again = lastImports.get(projectKey());
+  importMotion(again?.file);
+}
+
+panelActions.reimport = reimport;
+panelActions.adjust = adjustImport;
 
 function presetMapping(dialog: Dialog): void {
   const remembered = rememberedCustomMapping();
@@ -283,13 +347,13 @@ function presetMapping(dialog: Dialog): void {
   }
 }
 
-function details(prepared: Prepared): string {
-  const model = prepared.modelName ? ` · Source model: ${prepared.modelName}` : "";
-  return `Mapping: ${prepared.chosen.source}${model}`;
+function details(ready: Prepared): string {
+  const model = ready.modelName ? ` · Source model: ${ready.modelName}` : "";
+  return `Mapping: ${ready.chosen.source}${model}`;
 }
 
-/** Ask for one motion and its options, then import it. */
-export function importMotion(): void {
+/** Ask for one motion and its options, then import it. `preset` fills in the motion. */
+export function importMotion(preset?: FileResult): void {
   try {
     projectModel(); // fail early when there is nothing to animate
   } catch (error) {
@@ -325,33 +389,10 @@ export function importMotion(): void {
       }
       fieldFile(form.motion, "buffer", "motion.vmd", (file) => {
         if (!file) return;
-        prepare(form, (prepared) =>
-          runSoon(() => {
-            const motion = motionInput(file);
-            const result = convert(
-              {
-                motion,
-                model: projectModel(),
-                mapping: prepared.chosen.mapping,
-                mappingPath: prepared.chosen.source,
-              },
-              prepared.options,
-            );
-            const { animation } = result;
-            const loaded = addAnimations(
-              [{ document: JSON.parse(result.text), name: animation.name }],
-              "Import MMD motion",
-            );
-            if (loaded.animations[0]) showAnimation(loaded.animations[0]);
-            showReport({
-              headline:
-                `${loaded.replaced ? "Updated" : "Imported"} "${motion.path}": ` +
-                `${friendlyDuration(animation.length)}, ${animation.tracks.size} bones animated`,
-              details: `Animation: ${animation.name} · ${details(prepared)}`,
-              parts: [{ diagnostics: result.diagnostics.items }],
-            });
-          }),
-        );
+        prepare(form, (ready, used) => {
+          lastImports.set(projectKey(), { file, ...used });
+          run(() => convertOne(file, ready));
+        });
       });
       return true;
     },
@@ -359,119 +400,12 @@ export function importMotion(): void {
   dialog.show();
   tidyForm(dialog, { motion: "Choose a .vmd file (required)", ...SHARED_PLACEHOLDERS });
   presetMapping(dialog);
-}
-
-interface GroupForm extends SharedForm {
-  formation?: Formation;
-  sync?: boolean;
-}
-
-function importGroupFiles(files: FileResult[]): void {
-  let motions: MotionInput[];
-  try {
-    projectModel();
-    motions = files.map(motionInput);
-    checkGroupLabels(motions);
-  } catch (error) {
-    showError(error);
-    return;
+  if (preset && "content" in preset) {
+    try {
+      dialog.setFormValues({ motion: preset });
+    } catch {
+      // Older Blockbench can't preset a file field: the user picks the file again.
+    }
   }
-  const state = { optimize: last.optimize };
-  const dialog = new Dialog({
-    id: "mmd_motion_importer_group",
-    title: "Import MMD Performer Group",
-    width: 760,
-    buttons: [`Import ${motions.length} VMD files`, "dialog.cancel"],
-    form: {
-      files: {
-        type: "info",
-        label: "Motions",
-        text: motions.map((motion) => motion.path).join(", "),
-      },
-      sync: {
-        type: "checkbox",
-        label: "Same length for all",
-        description:
-          "Give every animation the longest one's length, so the performers start and " +
-          "end together. Shorter motions hold their last pose.",
-        value: last.syncLength,
-      },
-      formation: {
-        type: "select",
-        label: "Stage positions",
-        description: "The motions store where each performer stands on the stage.",
-        value: last.formation,
-        options: {
-          [Formation.KEEP]: "Keep them as in the dance",
-          [Formation.CENTER]: "Centre the whole group on the origin",
-          [Formation.ORIGIN]: "Start every performer at the origin (you place them)",
-        },
-      },
-      ...sharedFields(),
-    },
-    onFormChange(form: GroupForm) {
-      followOptimize(dialog, form, state);
-    },
-    onConfirm(form: GroupForm) {
-      last.formation = form.formation ?? Formation.KEEP;
-      last.syncLength = form.sync ?? true;
-      prepare(form, (prepared) =>
-        runSoon(() => {
-          const group = convertGroup(
-            motions,
-            {
-              model: projectModel(),
-              mapping: prepared.chosen.mapping,
-              mappingPath: prepared.chosen.source,
-            },
-            prepared.options,
-            { formation: last.formation, syncLength: last.syncLength },
-          );
-          const loaded = addAnimations(
-            group.members.map((member) => ({
-              document: JSON.parse(member.result.text),
-              name: member.result.animation.name,
-            })),
-            "Import MMD performer group",
-          );
-          if (loaded.animations[0]) showAnimation(loaded.animations[0]);
-
-          const perMember: ReportPart[] = group.members.map((member) => ({
-            heading:
-              `${member.motion.path} (${friendlyDuration(member.result.animation.length)}, ` +
-              `stood at x ${member.start[0].toFixed(1)}, z ${member.start[2].toFixed(1)} px)`,
-            diagnostics: member.result.diagnostics.items,
-          }));
-          showReport({
-            headline: `Imported ${group.members.length} performers as ${loaded.animations.length} animations`,
-            details: details(prepared),
-            parts: [
-              { heading: "The group", diagnostics: group.diagnostics.items },
-              ...withSharedPart(perMember, "Every performer"),
-            ],
-          });
-        }),
-      );
-      return true;
-    },
-  });
-  dialog.show();
-  tidyForm(dialog, SHARED_PLACEHOLDERS);
-  presetMapping(dialog);
 }
 
-/** Pick several motions (one per performer), then ask for the group's options. */
-export function importGroup(): void {
-  Blockbench.import(
-    {
-      extensions: ["vmd"],
-      type: "MMD motions (one per performer)",
-      readtype: "buffer",
-      multiple: true,
-      resource_id: "mmd_motion",
-    },
-    (files: FileResult[]) => {
-      if (files.length) importGroupFiles(files);
-    },
-  );
-}

@@ -214,11 +214,12 @@ const TEMPLATE = `
     For each bone of the model: the motion's bones whose rotations it follows, parent to child,
     separated by commas. "name*-1" applies a bone inverted. Bones left empty are not animated.
   </p>
-  <div style="display: grid; grid-template-columns: minmax(150px, 1fr) 2fr auto; gap: 3px 8px; align-items: center;">
+  <div style="display: grid; grid-template-columns: minmax(220px, 1fr) 1.4fr auto; gap: 3px 8px; align-items: center;">
     <b>Model bone</b><b>Follows (motion bones)</b><b title="Also follow the movement across the floor">Moves</b>
     <template v-for="row in rows">
       <div :style="{ paddingLeft: (row.depth * 12) + 'px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-                     color: row.missing ? 'var(--color-error)' : '' }" :title="row.bone">
+                     color: row.missing ? 'var(--color-error)' : '' }"
+           :title="row.bone + (row.note ? ' (' + row.note + ')' : !row.chain.trim() ? ' (not animated)' : '')">
         {{ row.bone }}
         <span v-if="row.note" style="color: var(--color-subtle_text); font-size: 0.85em;">({{ row.note }})</span>
         <span v-else-if="!row.chain.trim()" style="color: var(--color-warning); font-size: 0.85em;">(not animated)</span>

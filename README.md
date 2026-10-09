@@ -1,5 +1,12 @@
 # MMD Motion Importer for Blockbench
 
+[![Tests](https://github.com/antomarsi/miku-motion-blockbench-converter/actions/workflows/ci.yml/badge.svg)](https://github.com/antomarsi/miku-motion-blockbench-converter/actions/workflows/ci.yml)
+[![Release](https://github.com/antomarsi/miku-motion-blockbench-converter/actions/workflows/release.yml/badge.svg)](https://github.com/antomarsi/miku-motion-blockbench-converter/actions/workflows/release.yml)
+[![Latest version](https://img.shields.io/github/v/release/antomarsi/miku-motion-blockbench-converter?include_prereleases&label=version)](https://github.com/antomarsi/miku-motion-blockbench-converter/releases)
+
+> [!WARNING]
+> **This is an alpha.** It works on the models and dances it was tested with, but expect rough edges, and things may change between versions. Keep a copy of your model before using the tools that edit it, and please [report what breaks](https://github.com/antomarsi/miku-motion-blockbench-converter/issues).
+
 Import MikuMikuDance motion files (`.vmd`) into [Blockbench](https://www.blockbench.net/) as GeckoLib animations, on any model, and play them in Minecraft mods that use GeckoLib.
 
 It comes as a **Blockbench plugin** (desktop and web app) and as a **command-line tool** that does the same conversions from a terminal.
@@ -40,14 +47,11 @@ After an import, a report tells you what was left out or approximated, in plain 
 - **Hair avoids the body:** keeps simulated hair and cloth from passing through the head and body.
 - **Loop:** play once, loop, or hold on the last frame.
 
-Importing the same motion again replaces the animation of the same name. Imported animations aren't linked to a file on disk; export them from Blockbench as usual.
+A progress window shows how far the conversion is, with a Cancel button.
 
-### Several performers
+Importing the same motion again replaces the animation of the same name. After changing the model or its mapping, **Re-import** in the "MMD Import Report" panel (or Animation > Re-import Last MMD Motion) converts the last motion again with the same settings, without picking the file; **Change settings** reopens the dialog on it. Imported animations aren't linked to a file on disk; export them from Blockbench as usual.
 
-File > Import > Import MMD Performer Group (.vmd) takes one `.vmd` per performer and makes one animation each.
-
-- **Same length for all:** every animation gets the longest one's length, so the performers start and end together. Shorter ones hold their last pose.
-- **Stage positions:** the motions store where each performer stands. Keep them, centre the whole group on the origin, or start every performer at its own origin (for mods that place the performers themselves; the report lists where each one stood).
+For a dance with several performers, import each performer's `.vmd` in its own project. The command line's `convert-group` can also give them the same length and adjust their stage positions.
 
 ## Your own model
 
@@ -96,7 +100,7 @@ MMD hair, skirts and ties move by physics, which a `.vmd` doesn't store. Instead
 - **`gravity`:** 1 = real gravity at Minecraft scale.
 - **`offset`:** shifts the chain's resting shape, in pixels at the tip. For example, `[0, 0, 4]` hangs hair 4 px further back (+Z is the back).
 - **`tip`:** where the last bone ends. By default it's measured from that bone's cubes, so one-bone chains need no extra setup.
-- **`collide`:** the body parts the chain can't pass through. By default the head and trunk (head, chest, torso, hips) are found from the model's shape. Give a list of bone names to choose them yourself (add the arms, say), or `false` to let the chain pass through everything. Each part is a box around its cubes.
+- **`collide`:** the body parts the chain can't pass through. By default the head and trunk (head, chest, torso, hips) are found from the model's shape, and `cloth` chains also avoid the thighs and shins, so a lifting leg pushes a skirt instead of passing through it. Give a list of bone names to choose them yourself (add the arms for hair, say), or `false` to let the chain pass through everything. Each part is a box around its cubes.
 - **`collision_padding`:** pixels kept between the chain's joints and those parts. By default it's half the thickness of the chain's pieces, and never so much that the resting hair would be pushed away.
 
 ### Face
@@ -143,7 +147,7 @@ Use `mappings/template_slim.json` for slim skins. `miku-motion <command> --help`
 Notes that apply to both the plugin and the command line:
 
 - **Keyframe reduction (`--optimize`):** the motion is sampled at 60 fps, and keys are dropped wherever GeckoLib's blend between the remaining keys stays within tolerance (1° and 0.05 px by default). The check is on the true 3D rotation, including halfway between samples, which catches the detours plain sampling produces when a bone turns about 90° sideways. Dense, motion-capture-like dances shrink by roughly 25–60%; hand-keyed ones much more. Warning MM402 means some fast moves still exceed the tolerance.
-- **Leg IK:** solving needs the dancing model's bone positions, which a `.vmd` doesn't contain. A built-in skeleton with standard MMD proportions is used by default and works for most dances. If warning MM106 says feet miss their targets, pass the dance's own model: `--source-skeleton model.pmx` (only its bones and IK settings are read). A skeleton `.json` works too ([format](packages/core/src/data/skeletons/mmd-standard.json)). `--no-ik` turns solving off.
+- **Leg IK:** solving needs the dancing model's bone positions, which a `.vmd` doesn't contain. A built-in skeleton with standard MMD proportions is used by default and works for most dances. If warning MM106 says feet miss their targets, pass the dance's own model: `--source-skeleton model.pmx` (only its bones and IK settings are read). The mapping then also follows that model's bone tree where it differs from the standard one (info MM110), such as an arm twist that reaches the elbow only in part. A skeleton `.json` works too ([format](packages/core/src/data/skeletons/mmd-standard.json)). `--no-ik` turns solving off.
 - **Groups:** in a folder given to `convert-group`, animations are named `<folder>_<motion>`. Only horizontal stage positions change with `--formation`; heights are kept.
 
 ## Scope

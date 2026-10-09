@@ -7,6 +7,9 @@ import {
   checkGroupLabels,
   convert,
   convertGroup,
+  convertGroupSteps,
+  convertSteps,
+  type ConvertStep,
   Formation,
   type GroupResult,
   type MotionInput,
@@ -185,5 +188,63 @@ describe("performer groups", () => {
     const second = { ...motion("Miku", 5), path: "two/Miku.vmd" };
     expect(() => checkGroupLabels([first, second])).toThrow(/same animation name as one\/miku\.vmd/);
     expect(() => checkGroupLabels([first, motion("rin", 5)])).not.toThrow();
+  });
+});
+
+describe("stepwise conversion", () => {
+  function drain<T>(steps: Generator<ConvertStep, T>): { seen: ConvertStep[]; value: T } {
+    const seen: ConvertStep[] = [];
+    for (;;) {
+      const next = steps.next();
+      if (next.done) return { seen, value: next.value };
+      seen.push(next.value);
+    }
+  }
+  const rising = (seen: ConvertStep[]): boolean =>
+    seen.every((step, i) => step.fraction >= 0 && step.fraction <= 1 && (i === 0 || step.fraction >= seen[i - 1]!.fraction));
+
+  it("gives the same file as convert, with progress that only goes up", () => {
+    const inputs = { motion: motion("solo", 20), model: MODEL, mapping: MAPPING };
+    const { seen, value } = drain(convertSteps(inputs, { fps: 20 }));
+    expect(value.text).toBe(convertGroup([inputs.motion], { model: MODEL, mapping: MAPPING }, { fps: 20 }).members[0]!.result.text);
+    expect(seen[0]).toEqual({ stage: "read", fraction: 0 });
+    expect(seen.at(-1)!.stage).toBe("write");
+    expect(rising(seen)).toBe(true);
+  });
+
+  it("names the member being worked on in a group", () => {
+    const members = [motion("a", 20), motion("b", 30)];
+    const { seen, value } = drain(convertGroupSteps(members, { model: MODEL, mapping: MAPPING }, { fps: 20 }));
+    const whole = convertGroup(members, { model: MODEL, mapping: MAPPING }, { fps: 20 });
+    expect(value.members.map((member) => member.result.text)).toEqual(whole.members.map((member) => member.result.text));
+    expect(rising(seen)).toBe(true);
+    expect([...new Set(seen.map((step) => step.member))]).toHaveLength(2);
+    expect(seen.findIndex((step) => step.stage === "write")).toBeGreaterThan(seen.map((step) => step.stage).lastIndexOf("read"));
+  });
+});
+
+describe("unmapped tip bones", () => {
+  const dance = motion("toes", 20, [
+    key("左腕", 0),
+    key("左腕", 20),
+    key("左つま先", 0),
+    key("左つま先", 20),
+    key("左ひざ", 0),
+    key("左ひざ", 20),
+  ]);
+  const codes = (quietEndBones: boolean): [string, string[]][] =>
+    convert({ motion: dance, model: MODEL, mapping: MAPPING }, { fps: 20, quietEndBones })
+      .diagnostics.items.filter((item) => item.code === Code.UNMAPPED_ANIMATED_BONES || item.code === Code.END_BONES_UNMAPPED)
+      .map((item) => [`${item.code} ${item.severity}`, [...item.bones].sort()]);
+
+  it("reports toe tips as a note, apart from bones whose motion is lost", () => {
+    expect(codes(true)).toEqual([
+      ["MM109 info", ["左つま先"]],
+      ["MM101 warning", ["左ひざ"]],
+    ]);
+  });
+
+  it("can keep the single warning", () => {
+    expect(codes(false)).toEqual([["MM101 warning", ["左ひざ", "左つま先"].sort()]]);
   });
 });

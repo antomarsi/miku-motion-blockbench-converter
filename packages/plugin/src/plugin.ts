@@ -6,7 +6,7 @@
  */
 
 import { checkRig, newDancer } from "./extras";
-import { importGroup, importMotion } from "./importMotion";
+import { importMotion, reimport } from "./importMotion";
 import { editMapping } from "./mappingEditor";
 import { registerMappingProperty } from "./mappingStore";
 import { applyMinecraftSkin, generateMappingAction, prepareModel } from "./modelTools";
@@ -24,8 +24,8 @@ const ABOUT = [
   "your own rig, pick a custom mapping .json in the import dialog.",
   "",
   "Use File > Import > Import MMD Motion (.vmd), or the music-note button in the",
-  "Animations panel. For a dance with several performers, use Import MMD Performer",
-  "Group and pick one .vmd per performer.",
+  "Animations panel. For a dance with several performers, import each performer's",
+  ".vmd on its own.",
   "",
   "For your own rig, Tools > MMD Motion Importer > Prepare Model for Dancing checks its bones and fixes what a",
   "dance needs, Generate Bone Mapping writes the mapping for you, Edit Bone Mapping lets",
@@ -57,13 +57,13 @@ BBPlugin.register(PLUGIN_ID, {
       name: "Import MMD Motion (.vmd)",
       description: "Convert a MikuMikuDance motion into an animation on this model",
       icon: "music_note",
-      click: importMotion,
+      click: () => importMotion(),
     });
-    const groupAction = new Action(`${PLUGIN_ID}_import_group`, {
-      name: "Import MMD Performer Group (.vmd)",
-      description: "Convert several performers' motions of one dance, one animation each",
-      icon: "groups",
-      click: importGroup,
+    const reimportAction = new Action(`${PLUGIN_ID}_reimport`, {
+      name: "Re-import Last MMD Motion",
+      description: "Convert the last motion again with the same settings, after changing the model or its mapping",
+      icon: "replay",
+      click: reimport,
     });
     const prepareAction = new Action(`${PLUGIN_ID}_prepare`, {
       name: "Prepare Model for Dancing",
@@ -113,9 +113,8 @@ BBPlugin.register(PLUGIN_ID, {
       },
     });
     MenuBar.addAction(importAction, "file.import");
-    MenuBar.addAction(groupAction, "file.import");
     MenuBar.addAction(importAction, "animation");
-    MenuBar.addAction(groupAction, "animation");
+    MenuBar.addAction(reimportAction, "animation");
     const toolsMenu = new Action(`${PLUGIN_ID}_tools`, {
       name: TITLE,
       description: "Get a model ready to dance",
@@ -146,7 +145,7 @@ BBPlugin.register(PLUGIN_ID, {
     if (animations && !animations.children.includes(importAction)) animations.add(importAction, 3);
     actions = [
       importAction,
-      groupAction,
+      reimportAction,
       toolsMenu,
       prepareAction,
       mappingAction,

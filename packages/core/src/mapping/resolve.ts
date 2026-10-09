@@ -45,6 +45,11 @@ export interface ResolveOptions {
   mappingPath?: string | undefined;
   /** IK bones the source skeleton solves. */
   solvedIk?: ReadonlySet<string>;
+  /**
+   * Source bones that are only the tip of an IK chain (toe tips). Unmapped ones are
+   * reported as a note of their own instead of with the bones whose motion is lost.
+   */
+  endBones?: ReadonlySet<string>;
 }
 
 export function resolve(
@@ -125,13 +130,24 @@ function report(
     );
   }
 
-  const unmapped = [...motion.tracks]
+  const unused = [...motion.tracks]
     .filter(
       ([name, track]) =>
         trackIsAnimated(track) && !used.has(name) && !motion.ikBones.has(name) && !ignored(name),
     )
     .map(([name]) => name)
     .sort(compareNames);
+  const endBones = options.endBones ?? new Set<string>();
+  const ends = unused.filter((name) => endBones.has(name));
+  const unmapped = unused.filter((name) => !endBones.has(name));
+  if (ends.length && mapping.unmapped !== "ignore") {
+    diagnostics.info(
+      Code.END_BONES_UNMAPPED,
+      `${ends.length} animated end bones have no bone in the model (nothing below them ` +
+        `moves, so nothing visible is lost): ${listNames(ends)}`,
+      ends,
+    );
+  }
   if (unmapped.length && mapping.unmapped !== "ignore") {
     const message =
       `${unmapped.length} animated source bones are not mapped and their motion is ` +

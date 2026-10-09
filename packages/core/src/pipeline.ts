@@ -11,7 +11,8 @@ import { applySecondaryMotion } from "./conversion/secondary";
 import { Code, Diagnostics } from "./diagnostics";
 import { MikuMotionError } from "./errors";
 import type { Tolerance } from "./geckolib/optimize";
-import { renderAnimation, type WriteStats } from "./geckolib/writer";
+import { followSourceTree } from "./rig/reach";
+import { renderAnimationSteps, type WriteStats } from "./geckolib/writer";
 import { getVec3, IDENTITY, inverse, rotate, type Vec3 } from "./geometry/quat";
 import { resolve } from "./mapping/resolve";
 import type { MappingFile } from "./mapping/schema";
@@ -43,6 +44,19 @@ export interface ConvertOptions {
   readonly tolerance?: Tolerance | undefined;
   /** Keep hair and cloth chains out of the body (default: true). */
   readonly collide?: boolean | undefined;
+  /** With `collide`: also keep cloth out of the legs (default: true). */
+  readonly collideLimbs?: boolean | undefined;
+  /**
+   * Report unmapped IK tips (toe tips on a rig without toes) as a note instead of a
+   * warning about lost motion (default: true).
+   */
+  readonly quietEndBones?: boolean | undefined;
+  /**
+   * Weight each mapping link by how much of its rotation reaches the next one in the
+   * source skeleton (default: true). It only changes anything for skeletons whose tree
+   * differs from the standard one, like a model's own PMX.
+   */
+  readonly followSourceTree?: boolean | undefined;
 }
 
 export interface MotionInput {
@@ -145,7 +159,41 @@ export interface Draft {
   readonly performs: boolean;
 }
 
+/** Where a conversion is, for progress displays. */
+export interface ConvertStep {
+  /** The stage that starts now. */
+  readonly stage: "read" | "sample" | "ik" | "retarget" | "secondary" | "write";
+  /** Share of the whole conversion done so far, 0..1. */
+  readonly fraction: number;
+  /** In a group: the motion being worked on. */
+  readonly member?: string | undefined;
+}
+
+// Rough shares of the time each stage takes on a long dance with keyframe reduction.
+const STAGE_START = { read: 0, sample: 0.02, ik: 0.1, retarget: 0.25, secondary: 0.3, write: 0.5 } as const;
+
+function step(stage: ConvertStep["stage"]): ConvertStep {
+  return { stage, fraction: STAGE_START[stage] };
+}
+
+/** Run a stepwise conversion to its end in one go. */
+function complete<T>(steps: Generator<unknown, T>): T {
+  for (;;) {
+    const next = steps.next();
+    if (next.done) return next.value;
+  }
+}
+
 export function draft(inputs: ConvertInputs, options: ConvertOptions = {}): Draft {
+  return complete(draftSteps(inputs, options));
+}
+
+/**
+ * `draft` in steps: yields before each stage, so a caller with a user interface can show
+ * progress and let the screen repaint in between. The result is the same.
+ */
+export function* draftSteps(inputs: ConvertInputs, options: ConvertOptions = {}): Generator<ConvertStep, Draft> {
+  yield step("read");
   const diagnostics = new Diagnostics();
   const { model, mapping: mappingFile, mappingPath } = inputs;
   const motion = toSourceMotion(parseVmd(inputs.motion.data, inputs.motion.path), diagnostics);
@@ -161,6 +209,7 @@ export function draft(inputs: ConvertInputs, options: ConvertOptions = {}): Draf
   const ikBones = new Set(rig ? rig.ik.map((chain) => motion.canonicalName(chain.bone)) : []);
   const chains = resolveSecondary(mappingFile, model.skeleton, mappingPath, {
     collide: options.collide ?? true,
+    limbs: options.collideLimbs ?? true,
   });
   const candidates = suggestChains(model.skeleton, mappingFile);
   if (candidates.length) {
@@ -171,11 +220,28 @@ export function draft(inputs: ConvertInputs, options: ConvertOptions = {}): Draf
         "; `miku-motion inspect-model` prints a snippet to add them",
     );
   }
-  const mapping = resolve(mappingFile, model.skeleton, motion, diagnostics, {
+  // The tips are known from the skeleton even when IK solving is off.
+  const tips = (options.quietEndBones ?? true) ? (rig ?? builtinSkeleton()).ik : [];
+  let mapping = resolve(mappingFile, model.skeleton, motion, diagnostics, {
     mappingPath,
     solvedIk: ikBones,
+    endBones: new Set(tips.map((chain) => motion.canonicalName(chain.target))),
   });
+  if (rig && (options.followSourceTree ?? true)) {
+    const followed = followSourceTree(mapping, rig, motion.canonicalName);
+    mapping = followed.mapping;
+    if (followed.changes.length) {
+      const share = (value: number): string => `${Number((value * 100).toFixed(1))}%`;
+      const pairs = [...new Set(followed.changes.map((c) => `${c.source} reaches ${c.towards} at ${share(c.to / c.from)}`))];
+      diagnostics.info(
+        Code.SOURCE_TREE_FOLLOWED,
+        `followed the bone tree of source skeleton '${rig.name}': ${pairs.join(", ")}`,
+        [...new Set(followed.changes.map((c) => c.target))],
+      );
+    }
+  }
 
+  yield step("sample");
   const times = sampleTimes(motionDuration(motion), options.fps ?? DEFAULT_FPS);
   const frames = Float64Array.from(times, (t) => t * motion.frameRate);
   const needed = new Set(mapping.bindings.flatMap((b) => b.chain.map((link) => link.source)));
@@ -188,8 +254,12 @@ export function draft(inputs: ConvertInputs, options: ConvertOptions = {}): Draf
     const track = motion.tracks.get(name);
     if (track) poses.set(name, sampleTrack(track, frames));
   }
-  if (rig) reportIk(rig, solveIk(rig, motion, poses, frames), diagnostics);
+  if (rig) {
+    yield step("ik");
+    reportIk(rig, solveIk(rig, motion, poses, frames), diagnostics);
+  }
 
+  yield step("retarget");
   const animation = retarget(poses, times, mapping, model.skeleton, MMD_TO_CANONICAL, {
     name: options.name ?? defaultAnimationName(model, inputs.motion.label),
     loop: options.loop ?? LoopMode.ONCE,
@@ -197,6 +267,7 @@ export function draft(inputs: ConvertInputs, options: ConvertOptions = {}): Draf
   const morphRules = resolveMorphRules(mappingFile.morphs, model.skeleton, motion, diagnostics, mappingPath);
   applyMorphRules(animation, model.skeleton, motion, morphRules);
   if (chains.length) {
+    yield step("secondary");
     applySecondaryMotion(animation, model.skeleton, chains);
     diagnostics.info(
       Code.SECONDARY_MOTION,
@@ -212,7 +283,18 @@ export function draft(inputs: ConvertInputs, options: ConvertOptions = {}): Draf
 }
 
 export function finish(work: Draft, options: ConvertOptions = {}): ConversionResult {
-  const { text, stats } = renderAnimation(work.animation, work.model.skeleton, options.tolerance);
+  return complete(finishSteps(work, options));
+}
+
+/** `finish` in steps (see `draftSteps`): yields as the bones are written. */
+export function* finishSteps(work: Draft, options: ConvertOptions = {}): Generator<ConvertStep, ConversionResult> {
+  const writing = renderAnimationSteps(work.animation, work.model.skeleton, options.tolerance);
+  let written = writing.next();
+  while (!written.done) {
+    yield { stage: "write", fraction: STAGE_START.write + (1 - STAGE_START.write) * written.value };
+    written = writing.next();
+  }
+  const { text, stats } = written.value;
   if (options.tolerance) reportReduction(stats, options.tolerance, work.diagnostics);
   return {
     text,
@@ -224,7 +306,15 @@ export function finish(work: Draft, options: ConvertOptions = {}): ConversionRes
 }
 
 export function convert(inputs: ConvertInputs, options: ConvertOptions = {}): ConversionResult {
-  return finish(draft(inputs, options), options);
+  return complete(convertSteps(inputs, options));
+}
+
+/** `convert` in steps (see `draftSteps`). */
+export function* convertSteps(
+  inputs: ConvertInputs,
+  options: ConvertOptions = {},
+): Generator<ConvertStep, ConversionResult> {
+  return yield* finishSteps(yield* draftSteps(inputs, options), options);
 }
 
 // --- performer groups -------------------------------------------------------------------------
@@ -346,11 +436,44 @@ export function convertGroup(
   options: ConvertOptions = {},
   group: GroupOptions = {},
 ): GroupResult {
+  return complete(convertGroupSteps(motions, target, options, group));
+}
+
+/** One member's steps, placed on the group's scale: all drafts first, then all files. */
+function* memberSteps<T>(
+  steps: Generator<ConvertStep, T>,
+  motion: MotionInput,
+  index: number,
+  count: number,
+): Generator<ConvertStep, T> {
+  const half = STAGE_START.write;
+  for (;;) {
+    const next = steps.next();
+    if (next.done) return next.value;
+    const { stage, fraction } = next.value;
+    const own = stage === "write" ? (fraction - half) / (1 - half) : fraction / half;
+    const base = stage === "write" ? half : 0;
+    const share = stage === "write" ? 1 - half : half;
+    yield { stage, fraction: base + (share * (index + own)) / count, member: displayName(motion) };
+  }
+}
+
+/** `convertGroup` in steps (see `draftSteps`). */
+export function* convertGroupSteps(
+  motions: readonly MotionInput[],
+  target: Omit<ConvertInputs, "motion">,
+  options: ConvertOptions = {},
+  group: GroupOptions = {},
+): Generator<ConvertStep, GroupResult> {
   const formation = group.formation ?? Formation.KEEP;
   const syncLength = group.syncLength ?? false;
   const durationTolerance = group.durationTolerance ?? DEFAULT_GROUP_DURATION_TOLERANCE;
   let entries = [...motions];
-  let drafts = entries.map((motion) => draft({ ...target, motion }, { ...options, name: undefined }));
+  let drafts: Draft[] = [];
+  for (const [index, motion] of entries.entries()) {
+    const steps = draftSteps({ ...target, motion }, { ...options, name: undefined });
+    drafts.push(yield* memberSteps(steps, motion, index, entries.length));
+  }
 
   const diagnostics = new Diagnostics();
   const idle = entries.filter((_, i) => !drafts[i]!.performs).map(displayName);
@@ -415,11 +538,10 @@ export function convertGroup(
     }
   }
 
-  const members = entries.map((motion, i) => ({
-    motion,
-    result: finish(drafts[i]!, options),
-    label: motion.label,
-    start: starts[i]!,
-  }));
+  const members: GroupMember[] = [];
+  for (const [index, motion] of entries.entries()) {
+    const result = yield* memberSteps(finishSteps(drafts[index]!, options), motion, index, entries.length);
+    members.push({ motion, result, label: motion.label, start: starts[index]! });
+  }
   return { members, diagnostics };
 }

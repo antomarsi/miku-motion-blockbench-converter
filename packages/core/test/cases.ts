@@ -29,6 +29,7 @@ export function caseOptions(name: string, spec: CaseSpec): ConvertOptions {
   return {
     fps: spec.fps,
     collide: false, // the Python version, which the cases come from, has no collision
+    quietEndBones: false, // nor a separate note for toe tips
     sourceRig: caseRig(name, spec),
     tolerance: spec.optimize
       ? { ...DEFAULT_TOLERANCE, rotationDegrees: spec.optimize.rotation, position: spec.optimize.position }

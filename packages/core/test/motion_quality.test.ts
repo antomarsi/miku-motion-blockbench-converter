@@ -389,3 +389,67 @@ describe("facial animation", () => {
     expect(() => run([{ morph: "あ", bone: "mouht", scale: [1, 2, 1] }], motion)).toThrow(/did you mean 'mouth'/);
   });
 });
+
+describe("cloth against the legs", () => {
+  // A skirt panel hanging in front of a thigh, 0.5 px clear of it.
+  const rig = parseBbmodel(
+    bbmodel([
+      group("Body", undefined, [0, 12, 0], [0, 0, 0], [[-4, 12, -2], [4, 24, 2]]),
+      group("Head", "Body", [0, 24, 0], [0, 0, 0], [[-4, 24, -4], [4, 32, 4]]),
+      group("LegL", undefined, [-2, 12, 0], [0, 0, 0], [[-4, 6, -2], [0, 12, 2]]),
+      group("ShinL", "LegL", [-2, 6, 0], [0, 0, 0], [[-4, 0, -2], [0, 6, 2]]),
+      group("LegR", undefined, [2, 12, 0], [0, 0, 0], [[0, 6, -2], [4, 12, 2]]),
+      group("ShinR", "LegR", [2, 6, 0], [0, 0, 0], [[0, 0, -2], [4, 6, 2]]),
+      group("Skirt", "Body", [-2, 12, -2.75], [0, 0, 0], [[-4, 9, -3], [0, 12, -2.5]]),
+    ]),
+    "rig",
+  ).skeleton;
+  const chains = (limbs: boolean, extra: object = {}): ChainSpec =>
+    resolveSecondary(
+      parseMapping({ bones: { Body: "上半身", LegL: "左足" }, secondary_motion: [{ bones: ["Skirt"], preset: "cloth", ...extra }] }),
+      rig,
+      "m.json",
+      { limbs },
+    )[0]!;
+  const obstacles = (spec: ChainSpec): string[] => (spec.colliders ?? []).map((collider) => collider.bone).sort();
+
+  it("adds the thighs and shins to a cloth chain's obstacles, and to no other kind", () => {
+    expect(obstacles(chains(true))).toEqual(["Body", "Head", "LegL", "LegR", "ShinL", "ShinR"]);
+    expect(obstacles(chains(false))).toEqual(["Body", "Head"]);
+    expect(obstacles(chains(true, { preset: "long_hair" }))).toEqual(["Body", "Head"]);
+    expect(obstacles(chains(true, { collide: ["Body"] }))).toEqual(["Body"]);
+  });
+
+  it("lets a lifting thigh push the panel instead of passing through it", () => {
+    const times = Float64Array.from({ length: 61 }, (_, i) => i / 20);
+    const lifting: Animation = {
+      name: "a",
+      times,
+      length: 3,
+      loop: LoopMode.ONCE,
+      // The thigh swings forward (towards -Z) by up to 35 degrees; beyond that it would
+      // swallow the panel's own pivot, which nothing can solve.
+      tracks: new Map([
+        ["LegL", { rotations: quat.quatArray(Array.from(times, (t) => quat.fromAxisAngle([1, 0, 0], degrees(17.5 * Math.min(t, 2))))) }],
+      ]),
+    };
+    /** How deep the panel's tip gets inside the thigh's cube (px). */
+    const deepest = (spec: ChainSpec): number => {
+      const points = simulateChain(lifting, rig, spec);
+      const [low, high] = rig.get("LegL").extent!;
+      const pivot = rig.get("LegL").pivot;
+      let worst = 0;
+      for (let n = 0; n < times.length; n++) {
+        const tip = quat.getVec3(points, 2 * n + 1);
+        const back = quat.inverse(quat.fromAxisAngle([1, 0, 0], degrees(17.5 * Math.min(times[n]!, 2))));
+        const moved = quat.rotate(back, [tip[0] - pivot[0], tip[1] - pivot[1], tip[2] - pivot[2]]);
+        const local = [moved[0] + pivot[0], moved[1] + pivot[1], moved[2] + pivot[2]];
+        const depth = Math.min(...[0, 1, 2].map((axis) => Math.min(local[axis]! - low[axis]!, high[axis]! - local[axis]!)));
+        worst = Math.max(worst, depth);
+      }
+      return worst;
+    };
+    expect(deepest(chains(false))).toBeGreaterThan(1);
+    expect(deepest(chains(true))).toBeLessThan(0.3);
+  });
+});

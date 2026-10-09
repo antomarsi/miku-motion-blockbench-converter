@@ -90,25 +90,13 @@ function partHtml(part: ReportPart): string {
   return heading + section("Worth a look", warnings) + section("Good to know", infos);
 }
 
-/** Notes that every part has (same code and text) are shown once, under `heading`. */
-export function withSharedPart(parts: readonly ReportPart[], heading: string): ReportPart[] {
-  if (parts.length < 2) return [...parts];
-  const key = (d: Diagnostic): string => `${d.code}\n${d.message}`;
-  const everywhere = parts[0]!.diagnostics.filter((d) =>
-    parts.every((part) => part.diagnostics.some((other) => key(other) === key(d))),
-  );
-  if (!everywhere.length) return [...parts];
-  const shared = new Set(everywhere.map(key));
-  return [
-    { heading, diagnostics: everywhere },
-    ...parts.map((part) => ({ ...part, diagnostics: part.diagnostics.filter((d) => !shared.has(key(d))) })),
-  ];
-}
-
 // --- the panel that keeps the last report at hand ---------------------------------------
 
 const EMPTY_PANEL = `<p style="color: var(--color-subtle_text);">Import an MMD motion to see its report here.</p>`;
-const panelState = { html: EMPTY_PANEL };
+const panelState = { html: EMPTY_PANEL, imported: false };
+
+/** What the panel's buttons do; set by the import code, which this file must not import. */
+export const panelActions: { reimport?: () => void; adjust?: () => void } = {};
 
 /** A panel in Animate mode holding the last import's report. Delete the result on unload. */
 export function createReportPanel(): Deletable {
@@ -122,8 +110,25 @@ export function createReportPanel(): Deletable {
     default_position: { slot: "right_bar", float_position: [0, 0], float_size: [320, 420], height: 260, folded: true },
     component: {
       data: () => panelState,
-      methods: { click: onReportClick },
-      template: `<div style="overflow-y: auto; height: 100%; padding: 6px 8px;" v-html="html" @click="click"></div>`,
+      methods: {
+        click: onReportClick,
+        reimport: () => panelActions.reimport?.(),
+        adjust: () => panelActions.adjust?.(),
+      },
+      template: `
+        <div style="display: flex; flex-direction: column; height: 100%;">
+          <div v-if="imported" style="display: flex; gap: 6px; padding: 6px 8px 0;">
+            <button style="flex: 1; min-width: 0;" @click="reimport"
+              title="Convert the last motion again with the same settings. Use it after changing the model or its mapping.">
+              Re-import
+            </button>
+            <button style="flex: 1; min-width: 0;" @click="adjust"
+              title="Open the import dialog on the last motion, to change its settings">
+              Change settings
+            </button>
+          </div>
+          <div style="flex: 1; overflow-y: auto; padding: 6px 8px;" v-html="html" @click="click"></div>
+        </div>`,
     },
   } as unknown as ConstructorParameters<typeof Panel>[1]);
 }
@@ -138,6 +143,7 @@ function headerHtml(report: Report): string {
 export function showReport(report: Report): void {
   const body = report.parts.map(partHtml).join("");
   panelState.html = headerHtml(report) + (body || `<p>Nothing to report.</p>`);
+  panelState.imported = true;
   if (!body) {
     Blockbench.showQuickMessage(report.headline, 3000);
     return;
