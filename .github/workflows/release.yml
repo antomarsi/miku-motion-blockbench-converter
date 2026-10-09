@@ -54,7 +54,9 @@ jobs:
       - name: Package the command-line tool
         run: tar -czf miku-motion-cli.tgz -C packages/cli/dist miku-motion.mjs
       - name: Pick the release description
-        run: cp ".github/release-notes/${GITHUB_REF_NAME}.md" release-notes.md 2>/dev/null || : > release-notes.md
+        run: |
+          notes=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$notes" ]; then cp "$notes" release-notes.md; else touch release-notes.md; fi
       - name: Assemble the Pages site
         run: |
           mkdir site
