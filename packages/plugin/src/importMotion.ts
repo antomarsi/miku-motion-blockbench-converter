@@ -36,6 +36,7 @@ const last = {
   optimize: true,
   fps: OPTIMIZED_FPS,
   ik: true,
+  collide: true,
   loop: LoopMode.ONCE as LoopMode,
   formation: Formation.KEEP as Formation,
   syncLength: true,
@@ -121,6 +122,7 @@ interface SharedForm {
   optimize?: boolean;
   fps?: number;
   ik?: boolean;
+  collide?: boolean;
   loop?: LoopMode;
 }
 
@@ -179,6 +181,12 @@ function sharedFields(): Record<string, object> {
       description: "Work out knee bends from where the dance places the feet, as MMD does.",
       value: last.ik,
     },
+    collide: {
+      type: "checkbox",
+      label: "Hair avoids the body",
+      description: "Keep simulated hair and cloth from passing through the head and body.",
+      value: last.collide,
+    },
     loop: {
       type: "select",
       label: "Loop",
@@ -214,6 +222,7 @@ function prepare(form: SharedForm, onReady: (prepared: Prepared) => void): void 
   last.optimize = form.optimize ?? true;
   last.fps = Math.min(Math.max(Number(form.fps) || DEFAULT_FPS, 1), 240);
   last.ik = form.ik ?? true;
+  last.collide = form.collide ?? true;
   last.loop = form.loop ?? LoopMode.ONCE;
   fieldFile(form.mapping, "text", "mapping.json", (mappingFile) => {
     fieldFile(form.model, "buffer", "model.pmx", (modelFile) => {
@@ -238,6 +247,7 @@ function prepare(form: SharedForm, onReady: (prepared: Prepared) => void): void 
           fps: last.fps,
           loop: last.loop,
           tolerance: last.optimize ? DEFAULT_TOLERANCE : undefined,
+          collide: last.collide,
           ...rig,
         };
         onReady({ options, chosen, modelName });

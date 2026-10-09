@@ -3,6 +3,7 @@ import { CORE_NAME, MikuMotionError } from "@miku-motion/core";
 import { convertCommand, convertGroupCommand } from "./commands/convert";
 import { inspect } from "./commands/inspect";
 import { inspectModel } from "./commands/inspectModel";
+import { applySkinCommand, initMappingCommand, prepareModelCommand } from "./commands/model";
 import { UsageError } from "./io";
 
 const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "dev";
@@ -17,8 +18,9 @@ Commands:
   inspect-model <model.bbmodel>  Show a model's bones
   convert <motion.vmd>           Convert a motion for a model
   convert-group <motions...>     Convert several performers' motions for one model
-
-More commands are being ported from the Python version (branch "python").
+  prepare-model <model.bbmodel>  Fix a rig for dancing and add Blockbench IK (writes a copy)
+  init-mapping <model.bbmodel>   Generate a starter mapping for a model
+  apply-skin <skin.png>          Make the template model wear a Minecraft skin
 
 Options:
   --version   Show the version
@@ -30,6 +32,9 @@ const COMMANDS: Record<string, (argv: string[]) => number> = {
   "inspect-model": inspectModel,
   convert: convertCommand,
   "convert-group": convertGroupCommand,
+  "prepare-model": prepareModelCommand,
+  "init-mapping": initMappingCommand,
+  "apply-skin": applySkinCommand,
 };
 
 function main(argv: string[]): number {

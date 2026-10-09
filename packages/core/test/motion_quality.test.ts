@@ -7,7 +7,7 @@ import { LoopMode, type Animation } from "../src/animation/clip";
 import { makeBone, Skeleton } from "../src/animation/skeleton";
 import { parseBbmodel, parseBbmodelText } from "../src/blockbench/bbmodel";
 import { applyMorphRules, resolveMorphRules } from "../src/conversion/morphs";
-import { applySecondaryMotion } from "../src/conversion/secondary";
+import { applySecondaryMotion, simulateChain, type ChainSpec } from "../src/conversion/secondary";
 import { Code, Diagnostics } from "../src/diagnostics";
 import { MappingError, SkeletonError } from "../src/errors";
 import { rotationFromChannel } from "../src/geckolib/encoding";
@@ -208,6 +208,105 @@ describe("secondary motion", () => {
     const turning = run(Array.from(times, (t) => quat.fromAxisAngle([1, 0, 0], degrees(60 * t))));
     const swung = turning.tracks.get("Hair")!.rotations!;
     expect(quat.angle(quat.getQuat(swung, 40))).toBeGreaterThan(degrees(10));
+  });
+});
+
+describe("hair collision", () => {
+  // A ponytail hanging behind a body, 1.5 px clear of its back.
+  const rig = parseBbmodel(
+    bbmodel([
+      group("Body", undefined, [0, 12, 0], [0, 0, 0], [[-4, 12, -2], [4, 24, 2]]),
+      group("Head", "Body", [0, 24, 0], [0, 0, 0], [[-4, 24, -4], [4, 32, 4]]),
+      group("Arm", "Body", [-5, 22, 0], [0, 0, 0], [[-8, 12, -2], [-4, 24, 2]]),
+      group("Hair", "Head", [0, 30, 4.5], [0, 0, 0], [[-1, 22, 4], [1, 30, 5]]),
+      group("HairEnd", "Hair", [0, 22, 4.5], [0, 0, 0], [[-1, 14, 4], [1, 22, 5]]),
+    ]),
+    "rig",
+  ).skeleton;
+  const chain = { bones: ["Hair", "HairEnd"], preset: "ponytail" };
+  const resolved = (extra: object = {}, collide = true): ChainSpec =>
+    resolveSecondary(
+      parseMapping({ bones: { Head: "頭", Body: "上半身" }, secondary_motion: [{ ...chain, ...extra }] }),
+      rig,
+      "m.json",
+      { collide },
+    )[0]!;
+
+  const times = Float64Array.from({ length: 61 }, (_, i) => i / 20);
+  /** The head tilts back, which swings the rigid ponytail into the back. */
+  const tilting = (): Animation => ({
+    name: "a",
+    times,
+    length: 3,
+    loop: LoopMode.ONCE,
+    tracks: new Map([
+      ["Head", { rotations: quat.quatArray(Array.from(times, (t) => quat.fromAxisAngle([1, 0, 0], degrees(20 * Math.min(t, 2))))) }],
+    ]),
+  });
+  /** How deep inside the body's cubes the chain's joints and segment middles get (px). */
+  const deepest = (spec: ChainSpec): number => {
+    const points = simulateChain(tilting(), rig, spec);
+    const [low, high] = rig.get("Body").extent!;
+    let worst = 0;
+    for (let n = 0; n < times.length; n++) {
+      const joints = [0, 1, 2].map((j) => quat.getVec3(points, 3 * n + j));
+      const middles = [1, 2].map((j): quat.Vec3 => {
+        const [a, b] = [joints[j - 1]!, joints[j]!];
+        return [0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1]), 0.5 * (a[2] + b[2])];
+      });
+      for (const p of [...joints.slice(1), ...middles]) {
+        const depth = Math.min(...[0, 1, 2].map((axis) => Math.min(p[axis]! - low[axis]!, high[axis]! - p[axis]!)));
+        worst = Math.max(worst, depth);
+      }
+    }
+    return worst;
+  };
+
+  it("picks the head and trunk, padded by half the hair's thickness", () => {
+    const colliders = resolved().colliders!;
+    expect(colliders.map((c) => c.bone)).toEqual(["Head", "Body"]);
+    // The hair is 1 px thick: boxes grow by 0.5 px where the resting hair leaves room.
+    const body = colliders[1]!;
+    expectClose(body.center, [0, 18, 0], 1e-12);
+    expectClose(body.half, [4.5, 6.5, 2.5], 1e-12);
+    // The hair's root sits 0.5 px behind the head: the head's box stops just short of it.
+    expectClose(colliders[0]!.half, [4.49, 4.49, 4.49], 1e-12);
+  });
+
+  it("follows the mapping's choices", () => {
+    expect(resolved({ collide: false }).colliders).toEqual([]);
+    expect(resolved({}, false).colliders).toEqual([]);
+    expect(resolved({ collide: ["Arm"] }).colliders!.map((c) => c.bone)).toEqual(["Arm"]);
+    expectClose(resolved({ collide: ["Body"], collision_padding: 1 }).colliders![0]!.half, [5, 7, 3], 1e-12);
+    expect(() => resolved({ collide: ["Bodi"] })).toThrow(/"collide" bones not found[\s\S]*did you mean 'Body'/);
+    expect(() => parseMapping({ secondary_motion: [{ ...chain, collision_padding: -1 }] })).toThrow(MappingError);
+  });
+
+  it("keeps the hair out of the body", () => {
+    expect(deepest(resolved({ collide: false }))).toBeGreaterThan(1); // goes right through
+    expect(deepest(resolved())).toBeLessThan(1e-9);
+  });
+
+  it("changes nothing while the hair is clear of the body", () => {
+    const still: Animation = { ...tilting(), tracks: new Map() };
+    const free = simulateChain(still, rig, resolved({ collide: false }));
+    expectClose(simulateChain(still, rig, resolved()), free, 0);
+  });
+
+  it("lets joints that start inside a part stay there", () => {
+    // A fringe whose pivot is inside the head.
+    const fringe = parseBbmodel(
+      bbmodel([
+        group("Head", undefined, [0, 24, 0], [0, 0, 0], [[-4, 24, -4], [4, 32, 4]]),
+        group("Fringe", "Head", [0, 30, 0], [0, 0, 0], [[-1, 26, 4], [1, 31, 5]]),
+      ]),
+      "rig",
+    ).skeleton;
+    const [spec] = resolveSecondary(
+      parseMapping({ bones: { Head: "頭" }, secondary_motion: [{ bones: ["Fringe"], collide: ["Head"] }] }),
+      fringe,
+    );
+    expect(spec!.colliders).toMatchObject([{ bone: "Head", free: [0] }]);
   });
 });
 

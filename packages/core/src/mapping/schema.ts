@@ -71,6 +71,13 @@ const secondaryMotionSpec = z
     offset: vec3.default([0, 0, 0]),
     /** Max swing, degrees. */
     max_angle: z.number().positive().max(180).optional(),
+    /**
+     * Body parts the chain can't pass through: `true` (default) picks the head and
+     * trunk, `false` turns collision off, a list names the bones to avoid.
+     */
+    collide: z.union([z.boolean(), z.array(z.string())]).optional(),
+    /** Pixels kept between the chain's joints and those parts; default: half its thickness. */
+    collision_padding: z.number().min(0).optional(),
   })
   .superRefine((spec, context) => {
     if (spec.damping !== undefined && spec.bounciness !== undefined) {

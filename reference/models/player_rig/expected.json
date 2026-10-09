@@ -1,0 +1,122 @@
+{
+ "model": "model.bbmodel",
+ "roles": {},
+ "arms": {},
+ "legs": {},
+ "suggestions": [],
+ "prepare": {
+  "options": {
+   "split_limbs": true,
+   "hair_ik": true,
+   "limb_ik": true
+  },
+  "findings": [
+   {
+    "message": "couldn't find the model's torso, head, legs, arms; map those bones by hand",
+    "fixed": false
+   }
+  ],
+  "document": {
+   "bones": [
+    {
+     "name": "Root",
+     "parent": null,
+     "pivot": [
+      0.0,
+      0.0,
+      0.0
+     ],
+     "extent": null
+    },
+    {
+     "name": "Body",
+     "parent": "Root",
+     "pivot": [
+      0.0,
+      12.0,
+      0.0
+     ],
+     "extent": null
+    },
+    {
+     "name": "Chest",
+     "parent": "Body",
+     "pivot": [
+      0.0,
+      23.0,
+      -1.0
+     ],
+     "extent": null
+    },
+    {
+     "name": "Head",
+     "parent": "Body",
+     "pivot": [
+      0.0,
+      24.0,
+      0.0
+     ],
+     "extent": null
+    },
+    {
+     "name": "LeftArm",
+     "parent": "Body",
+     "pivot": [
+      -4.5,
+      22.0,
+      0.0
+     ],
+     "extent": null
+    },
+    {
+     "name": "LowerLeftArm",
+     "parent": "LeftArm",
+     "pivot": [
+      -4.5,
+      17.0,
+      0.0
+     ],
+     "extent": null
+    },
+    {
+     "name": "RightArm",
+     "parent": "Body",
+     "pivot": [
+      4.5,
+      22.0,
+      0.0
+     ],
+     "extent": null
+    },
+    {
+     "name": "LeftLeg",
+     "parent": "Root",
+     "pivot": [
+      -1.9,
+      12.0,
+      0.0
+     ],
+     "extent": null
+    },
+    {
+     "name": "RightLeg",
+     "parent": "Root",
+     "pivot": [
+      1.9,
+      12.0,
+      0.0
+     ],
+     "extent": null
+    }
+   ],
+   "elements": []
+  },
+  "after": {
+   "roles": {},
+   "arms": {},
+   "legs": {},
+   "suggestions": []
+  },
+  "fixed_again": []
+ }
+}

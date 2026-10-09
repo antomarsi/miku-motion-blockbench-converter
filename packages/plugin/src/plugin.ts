@@ -6,6 +6,7 @@
  */
 
 import { importGroup, importMotion } from "./importMotion";
+import { applyMinecraftSkin, generateMappingAction, prepareModel } from "./modelTools";
 
 declare const __VERSION__: string;
 
@@ -21,6 +22,10 @@ const ABOUT = [
   "Use File > Import > Import MMD Motion (.vmd), or the music-note button in the",
   "Animations panel. For a dance with several performers, use Import MMD Performer",
   "Group and pick one .vmd per performer.",
+  "",
+  "For your own rig, Tools > MMD Motion Importer > Prepare Model for Dancing checks its bones and fixes what a",
+  "dance needs, and Generate Bone Mapping writes the mapping for you. Apply Minecraft",
+  "Skin dresses the template model in any Minecraft skin.",
   "",
   "Legs follow the dance's IK targets, hair and clothes swing by simulation, and blinks",
   "and mouth shapes drive the face parts of the mapping.",
@@ -51,6 +56,24 @@ BBPlugin.register(PLUGIN_ID, {
       icon: "groups",
       click: importGroup,
     });
+    const prepareAction = new Action(`${PLUGIN_ID}_prepare`, {
+      name: "Prepare Model for Dancing",
+      description: "Check the model's bones and fix what a dance needs (one undo step)",
+      icon: "accessibility_new",
+      click: prepareModel,
+    });
+    const mappingAction = new Action(`${PLUGIN_ID}_mapping`, {
+      name: "Generate Bone Mapping",
+      description: "Work out which of this model's bones follow which part of a dance",
+      icon: "account_tree",
+      click: generateMappingAction,
+    });
+    const skinAction = new Action(`${PLUGIN_ID}_skin`, {
+      name: "Apply Minecraft Skin",
+      description: "Put a Minecraft skin (.png) on the template model",
+      icon: "checkroom",
+      click: applyMinecraftSkin,
+    });
     const about = new Action(`${PLUGIN_ID}_about`, {
       name: `About ${TITLE}`,
       description: "Version and project page",
@@ -66,11 +89,19 @@ BBPlugin.register(PLUGIN_ID, {
     MenuBar.addAction(groupAction, "file.import");
     MenuBar.addAction(importAction, "animation");
     MenuBar.addAction(groupAction, "animation");
+    const toolsMenu = new Action(`${PLUGIN_ID}_tools`, {
+      name: TITLE,
+      description: "Get a model ready to dance",
+      icon: "music_note",
+      children: [prepareAction, mappingAction, skinAction],
+      click() {},
+    });
+    MenuBar.addAction(toolsMenu, "tools");
     MenuBar.addAction(about, "help");
     // The row of buttons at the top of the Animations panel, after its own import button.
     const animations = Toolbars.animations as Toolbar | undefined;
     if (animations && !animations.children.includes(importAction)) animations.add(importAction, 3);
-    actions = [importAction, groupAction, about];
+    actions = [importAction, groupAction, toolsMenu, prepareAction, mappingAction, skinAction, about];
   },
   onunload() {
     for (const action of actions) action.delete();

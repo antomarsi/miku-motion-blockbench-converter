@@ -49,10 +49,10 @@ export function readMapping(path: string): MappingFile {
   return parseMappingText(readText(path), path);
 }
 
-/** Write text with LF line endings, creating the folder if needed. */
-export function writeOutput(path: string, text: string): void {
+/** Write a file (text as UTF-8 with the line endings it has), creating the folder if needed. */
+export function writeOutput(path: string, content: string | Uint8Array): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, text, "utf8");
+  writeFileSync(path, content);
 }
 
 /** Warnings and notes go to stderr so stdout stays clean for piping. */

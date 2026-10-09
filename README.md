@@ -6,7 +6,7 @@ Convert MikuMikuDance motion files (`.vmd`) into GeckoLib-compatible `.animation
 dance.vmd + model.bbmodel + mapping.json  →  miku-motion convert  →  dance.animation.json
 ```
 
-> **Status:** this branch is being ported from a Python command-line tool to a **Blockbench plugin** (TypeScript) with a Node CLI. The port is in progress: conversion is complete (body, leg IK, simulated hair, face, performer groups) and matches the Python version; the model tools (prepare-model, init-mapping, apply-skin) are not ported yet.
+> **Status:** this branch is being ported from a Python command-line tool to a **Blockbench plugin** (TypeScript) with a Node CLI. The port is in progress: conversion is complete (body, leg IK, simulated hair, face, performer groups) and matches the Python version; the model tools (prepare-model, init-mapping, apply-skin) are ported too, in the CLI and as plugin actions under Tools.
 >
 > - **For the model tools**, use the Python version on the [`python` branch](../../tree/python). Everything below this notice describes that version.
 > - **To try the plugin:** `npm install`, then `npm run build`. Load `packages/plugin/dist/mmd_motion_importer.js` in Blockbench with File > Plugins > Load Plugin from File, then use File > Import > Import MMD Motion (.vmd).
@@ -127,6 +127,8 @@ MMD hair, skirts and ties move by physics, which a `.vmd` doesn't store. Instead
 - **`gravity`:** 1 = real gravity at Minecraft scale.
 - **`offset`:** shifts the chain's resting shape, in pixels at the tip. For example, `[0, 0, 4]` hangs hair 4 px further back (+Z is the back).
 - **`tip`:** where the last bone ends. By default it's measured from that bone's cubes, so one-bone chains need no extra setup.
+- **`collide`:** the body parts the chain can't pass through. By default the head and trunk (head, chest, torso, hips) are found from the model's shape. Give a list of bone names to choose them yourself (add the arms, say), or `false` to let the chain pass through everything. Each part is a box around its cubes. `--no-collision` turns this off for a whole conversion.
+- **`collision_padding`:** pixels kept between the chain's joints and those parts. By default it's half the thickness of the chain's pieces, and never so much that the resting hair would be pushed away.
 
 `miku-motion inspect-model model.bbmodel [-m mapping.json]` lists a model's bones and suggests hair, cloth and accessory chains it finds by name and shape, as a snippet you can paste into the mapping. Conversions also mention unconfigured candidates (info MM303).
 

@@ -41,6 +41,8 @@ export interface ConvertOptions {
   readonly sourceRig?: SourceRig | null;
   /** Reduce keyframes within this error. */
   readonly tolerance?: Tolerance | undefined;
+  /** Keep hair and cloth chains out of the body (default: true). */
+  readonly collide?: boolean | undefined;
 }
 
 export interface MotionInput {
@@ -157,7 +159,9 @@ export function draft(inputs: ConvertInputs, options: ConvertOptions = {}): Draf
   }
   let rig = options.sourceRig === undefined ? builtinSkeleton() : options.sourceRig;
   const ikBones = new Set(rig ? rig.ik.map((chain) => motion.canonicalName(chain.bone)) : []);
-  const chains = resolveSecondary(mappingFile, model.skeleton, mappingPath);
+  const chains = resolveSecondary(mappingFile, model.skeleton, mappingPath, {
+    collide: options.collide ?? true,
+  });
   const candidates = suggestChains(model.skeleton, mappingFile);
   if (candidates.length) {
     diagnostics.info(

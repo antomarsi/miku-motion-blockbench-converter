@@ -48,3 +48,10 @@ export * from "./pmx/adapter";
 export * from "./rig/ik";
 export * from "./rig/model";
 export * from "./rig/schema";
+
+export * from "./mapping/init";
+export * from "./model/document";
+export * from "./model/editor";
+export * from "./model/prepare";
+export * from "./model/roles";
+export * from "./model/skin";

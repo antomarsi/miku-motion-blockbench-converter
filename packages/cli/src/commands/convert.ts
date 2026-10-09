@@ -50,6 +50,7 @@ const SHARED_OPTIONS = `  -t, --target <file>    Target Blockbench model (requir
                          name, a skeleton .json, or best the .pmx the motion was made for
                          (default ${DEFAULT_SKELETON})
       --no-ik            Don't solve IK (legs, toes)
+      --no-collision     Let simulated hair and cloth pass through the body
       --strict           Fail when any warning is emitted`;
 
 export const CONVERT_HELP = `Usage: miku-motion convert <motion.vmd> -t <model.bbmodel> -m <mapping.json> [options]
@@ -93,6 +94,7 @@ const SHARED_ARGS = {
   loop: { type: "string" },
   "source-skeleton": { type: "string" },
   "no-ik": { type: "boolean" },
+  "no-collision": { type: "boolean" },
   strict: { type: "boolean" },
   help: { type: "boolean" },
 } as const;
@@ -133,6 +135,7 @@ function conversionOptions(values: SharedValues): { options: ConvertOptions; fps
     fps,
     loop: loop as LoopMode,
     sourceRig: values["no-ik"] ? null : sourceRig(values["source-skeleton"] ?? DEFAULT_SKELETON),
+    collide: !values["no-collision"],
     tolerance: optimize
       ? {
           rotationDegrees: numberOption(values["rotation-tolerance"], "rotation-tolerance", DEFAULT_ROTATION_TOLERANCE, 0.01),

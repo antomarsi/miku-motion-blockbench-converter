@@ -7,10 +7,11 @@
  */
 
 import type { Bone, Skeleton } from "../animation/skeleton";
-import type { ChainSpec } from "../conversion/secondary";
+import type { ChainSpec, Collider } from "../conversion/secondary";
 import keywordData from "../data/secondary_keywords.json";
 import { MappingError } from "../errors";
 import type { Vec3 } from "../geometry/quat";
+import { detectRoles } from "../model/roles";
 import { unknownTargets } from "./resolve";
 import type { MappingFile, SecondaryMotionSpec } from "./schema";
 
@@ -92,13 +93,88 @@ function tipOf(
   );
 }
 
+const DEFAULT_PADDING = 0.5; // px, for chains without cubes to measure
+const EMBEDDED = 1.0; // px: a joint deeper than this inside a part at rest belongs there
+const CLEARANCE = 0.01; // px kept between a resting chain and a padded collider
+
+/** Half the thickness of the chain's pieces: how far its joints stay from the body. */
+function chainPadding(skeleton: Skeleton, bones: readonly string[]): number {
+  let thickest = 0;
+  for (const name of bones) {
+    const extent = skeleton.get(name).extent;
+    if (!extent) continue;
+    const [low, high] = extent;
+    thickest = Math.max(thickest, Math.min(high[0] - low[0], high[1] - low[1], high[2] - low[2]));
+  }
+  return thickest > 0 ? 0.5 * thickest : DEFAULT_PADDING;
+}
+
+/**
+ * The box around `bone`'s cubes, grown by `padding` but never so far that the resting
+ * chain would touch it: the rest shape must stay as modelled.
+ */
+function colliderFor(bone: Bone, points: readonly Vec3[], padding: number): Collider | undefined {
+  if (!bone.extent) return undefined;
+  const [low, high] = bone.extent;
+  const center: Vec3 = [0.5 * (low[0] + high[0]), 0.5 * (low[1] + high[1]), 0.5 * (low[2] + high[2])];
+  const half: Vec3 = [0.5 * (high[0] - low[0]), 0.5 * (high[1] - low[1]), 0.5 * (high[2] - low[2])];
+  // How far outside the box a point is (negative: that deep inside).
+  const outside = (p: Vec3): number =>
+    Math.max(
+      Math.abs(p[0] - center[0]) - half[0],
+      Math.abs(p[1] - center[1]) - half[1],
+      Math.abs(p[2] - center[2]) - half[2],
+    );
+  const free: number[] = [];
+  let room = padding;
+  points.forEach((point, j) => {
+    const gap = outside(point);
+    if (gap < -EMBEDDED) {
+      free.push(j);
+      return;
+    }
+    room = Math.min(room, gap - CLEARANCE);
+    const before = points[j - 1];
+    if (before && !free.includes(j - 1)) {
+      const middle: Vec3 = [
+        0.5 * (before[0] + point[0]),
+        0.5 * (before[1] + point[1]),
+        0.5 * (before[2] + point[2]),
+      ];
+      room = Math.min(room, outside(middle) - CLEARANCE);
+    }
+  });
+  const grown: Vec3 = [half[0] + room, half[1] + room, half[2] + room];
+  if (grown.some((value) => value <= 0)) return undefined;
+  return { bone: bone.name, center, half: grown, ...(free.length ? { free } : {}) };
+}
+
+export interface SecondaryOptions {
+  /** Keep chains out of the body (default). `false` ignores every chain's `collide`. */
+  readonly collide?: boolean;
+}
+
 /** Validate `secondary_motion` chains against the target skeleton. */
 export function resolveSecondary(
   mapping: MappingFile,
   skeleton: Skeleton,
   mappingPath?: string,
+  options: SecondaryOptions = {},
 ): ChainSpec[] {
   const chains: ChainSpec[] = [];
+  const swinging = new Set(mapping.secondary_motion.flatMap((spec) => spec.bones));
+  let trunk: string[] | undefined;
+  /** The head and trunk, found from the model's shape. */
+  const bodyParts = (): string[] => {
+    if (!trunk) {
+      const loose = new Set([...swinging, ...suggestChains(skeleton, mapping).flatMap((s) => s.bones)]);
+      const roles = detectRoles(skeleton, loose);
+      trunk = [roles.head, roles.chest, roles.torso, roles.hips].filter(
+        (name): name is string => name !== undefined,
+      );
+    }
+    return trunk;
+  };
   const used = new Set<string>();
   const driven = new Set(Object.keys(mapping.bones));
   mapping.secondary_motion.forEach((spec, index) => {
@@ -139,6 +215,31 @@ export function resolveSecondary(
       );
     }
 
+    const colliders: Collider[] = [];
+    if (options.collide !== false && spec.collide !== false) {
+      const named = Array.isArray(spec.collide) ? spec.collide : undefined;
+      const missing = (named ?? []).filter((bone) => !skeleton.has(bone));
+      if (missing.length) {
+        throw new MappingError(
+          `${where}: "collide" bones not found in the model:\n${unknownTargets(missing, skeleton)}`,
+          { path: mappingPath },
+        );
+      }
+      const hollow = (named ?? []).filter((bone) => !skeleton.get(bone).extent);
+      if (hollow.length) {
+        throw new MappingError(
+          `${where}: "collide" bones [${hollow.map(quoted).join(", ")}] have no cubes to avoid`,
+          { path: mappingPath },
+        );
+      }
+      const padding = spec.collision_padding ?? chainPadding(skeleton, spec.bones);
+      for (const name of named ?? bodyParts()) {
+        if (swinging.has(name)) continue;
+        const collider = colliderFor(skeleton.get(name), points, padding);
+        if (collider) colliders.push(collider);
+      }
+    }
+
     const preset = PRESETS[spec.preset ?? DEFAULT_PRESET]!;
     const stiffness = spec.stiffness ?? preset.stiffness;
     chains.push({
@@ -149,6 +250,7 @@ export function resolveSecondary(
       gravity: spec.gravity ?? preset.gravity,
       offset: spec.offset,
       maxAngle: spec.max_angle ?? preset.maxAngle,
+      colliders,
     });
   });
   return chains;
