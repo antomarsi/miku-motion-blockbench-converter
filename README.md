@@ -6,7 +6,13 @@ Convert MikuMikuDance motion files (`.vmd`) into GeckoLib-compatible `.animation
 dance.vmd + model.bbmodel + mapping.json  →  miku-motion convert  →  dance.animation.json
 ```
 
-> **Status:** early development (pre-0.1). `inspect` and `convert` work; `inspect-model` and `validate` are planned. The axis and sign conventions are verified in Blockbench ([docs/conventions.md](docs/conventions.md)); in-game GeckoLib playback is still to be checked.
+> **Status:** this branch is being ported from a Python command-line tool to a **Blockbench plugin** (TypeScript) with a Node CLI. The port is in progress and can't convert motions yet.
+>
+> - **To convert motions today**, use the Python version on the [`python` branch](../../tree/python). Everything below this notice describes that version.
+> - **To build the plugin shell:** `npm install`, then `npm run build`. Load `packages/plugin/dist/mmd_motion_importer.js` in Blockbench with File > Plugins > Load Plugin from File.
+> - **Development checks:** `npm run check` (lint, type check, tests, build).
+>
+> The axis and sign conventions are verified in Blockbench and in-game ([docs/conventions.md](docs/conventions.md)).
 
 ## Install
 

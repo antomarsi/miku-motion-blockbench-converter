@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "units": {
+    "translation_scale": 2
+  },
+  "bones": {
+    "Root": {
+      "from": [
+        "センター"
+      ],
+      "translation": true
+    },
+    "LeftArm": "左腕"
+  }
+}

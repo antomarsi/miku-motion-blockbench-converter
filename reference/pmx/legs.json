@@ -1,0 +1,222 @@
+{
+  "name": "脚モデル",
+  "bones": [
+    {
+      "name": "全ての親",
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "parent": -1,
+      "inherit_rotation": null,
+      "ik": null
+    },
+    {
+      "name": "センター",
+      "position": [
+        0.0,
+        8.0,
+        0.0
+      ],
+      "parent": 0,
+      "inherit_rotation": null,
+      "ik": null
+    },
+    {
+      "name": "腰",
+      "position": [
+        0.0,
+        12.0,
+        0.30000001192092896
+      ],
+      "parent": 1,
+      "inherit_rotation": null,
+      "ik": null
+    },
+    {
+      "name": "下半身",
+      "position": [
+        0.0,
+        12.399999618530273,
+        0.20000000298023224
+      ],
+      "parent": 2,
+      "inherit_rotation": null,
+      "ik": null
+    },
+    {
+      "name": "腰キャンセル左",
+      "position": [
+        0.800000011920929,
+        11.199999809265137,
+        0.20000000298023224
+      ],
+      "parent": 3,
+      "inherit_rotation": [
+        2,
+        -1.0
+      ],
+      "ik": null
+    },
+    {
+      "name": "左足",
+      "position": [
+        0.800000011920929,
+        11.199999809265137,
+        0.20000000298023224
+      ],
+      "parent": 4,
+      "inherit_rotation": null,
+      "ik": null
+    },
+    {
+      "name": "左ひざ",
+      "position": [
+        0.800000011920929,
+        6.099999904632568,
+        -0.10000000149011612
+      ],
+      "parent": 5,
+      "inherit_rotation": null,
+      "ik": null
+    },
+    {
+      "name": "左足首",
+      "position": [
+        0.800000011920929,
+        1.0,
+        0.5
+      ],
+      "parent": 6,
+      "inherit_rotation": null,
+      "ik": null
+    },
+    {
+      "name": "左つま先",
+      "position": [
+        0.800000011920929,
+        0.0,
+        -1.100000023841858
+      ],
+      "parent": 7,
+      "inherit_rotation": null,
+      "ik": null
+    },
+    {
+      "name": "左足ＩＫ",
+      "position": [
+        0.800000011920929,
+        1.0,
+        0.5
+      ],
+      "parent": 0,
+      "inherit_rotation": null,
+      "ik": {
+        "target": 7,
+        "iterations": 40,
+        "limit_angle": 2.0,
+        "links": [
+          {
+            "bone": 6,
+            "min": [
+              -3.1415927410125732,
+              0.0,
+              0.0
+            ],
+            "max": [
+              -0.008700000122189522,
+              0.0,
+              0.0
+            ]
+          },
+          {
+            "bone": 5,
+            "min": null,
+            "max": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "左つま先ＩＫ",
+      "position": [
+        0.800000011920929,
+        0.0,
+        -1.100000023841858
+      ],
+      "parent": 9,
+      "inherit_rotation": null,
+      "ik": {
+        "target": 8,
+        "iterations": 3,
+        "limit_angle": 4.0,
+        "links": [
+          {
+            "bone": 7,
+            "min": null,
+            "max": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "髪1",
+      "position": [
+        0.0,
+        15.0,
+        1.0
+      ],
+      "parent": 2,
+      "inherit_rotation": null,
+      "ik": null
+    },
+    {
+      "name": "髪2",
+      "position": [
+        0.0,
+        14.0,
+        1.0
+      ],
+      "parent": 11,
+      "inherit_rotation": null,
+      "ik": null
+    },
+    {
+      "name": "髪ＩＫ",
+      "position": [
+        0.0,
+        14.0,
+        1.0
+      ],
+      "parent": 0,
+      "inherit_rotation": null,
+      "ik": {
+        "target": 12,
+        "iterations": 5,
+        "limit_angle": 1.0,
+        "links": [
+          {
+            "bone": 11,
+            "min": null,
+            "max": null
+          }
+        ]
+      }
+    }
+  ],
+  "morphs": [
+    [
+      "まばたき",
+      2
+    ],
+    [
+      "あ",
+      3
+    ],
+    [
+      "真面目",
+      1
+    ]
+  ]
+}

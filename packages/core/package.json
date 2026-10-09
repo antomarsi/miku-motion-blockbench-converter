@@ -1,0 +1,11 @@
+{
+  "name": "@miku-motion/core",
+  "version": "0.2.0",
+  "description": "MMD motion (.vmd) to GeckoLib animation conversion: pure TypeScript, no Blockbench or Node APIs.",
+  "license": "MIT",
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "zod": "^4.6.5"
+  }
+}

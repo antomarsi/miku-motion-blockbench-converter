@@ -1,0 +1,7 @@
+{
+  "motion": "motion.vmd",
+  "model": "model.bbmodel",
+  "mapping": "mapping.json",
+  "source_skeleton": "skeleton.pmx",
+  "fps": 20
+}

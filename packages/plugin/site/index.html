@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MMD Motion Importer for Blockbench</title>
+    <style>
+      body { font: 16px/1.5 system-ui, sans-serif; max-width: 42rem; margin: 3rem auto; padding: 0 1rem; }
+      code { background: #8882; padding: 0.15em 0.35em; border-radius: 4px; word-break: break-all; }
+    </style>
+  </head>
+  <body>
+    <h1>MMD Motion Importer</h1>
+    <p>A Blockbench plugin that imports MikuMikuDance motion (.vmd) as GeckoLib animations.</p>
+    <h2>Install</h2>
+    <ol>
+      <li>In Blockbench, open <strong>File &gt; Plugins</strong>.</li>
+      <li>Choose <strong>Load Plugin from URL</strong>.</li>
+      <li>Paste this address: <code id="url">mmd_motion_importer.js</code></li>
+    </ol>
+    <p><a href="https://github.com/antomarsi/miku-motion-blockbench-converter">Source and documentation</a></p>
+    <script>
+      document.getElementById("url").textContent = new URL("mmd_motion_importer.js", location.href).href;
+    </script>
+  </body>
+</html>

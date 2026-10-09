@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "units": {
+    "translation_scale": 1.6
+  },
+  "bones": {
+    "Root": {
+      "from": [
+        "全ての親",
+        "センター"
+      ],
+      "translation": true
+    },
+    "Hips": {
+      "from": [
+        "腰",
+        "下半身"
+      ]
+    },
+    "LeftLeg": {
+      "from": [
+        {
+          "bone": "腰",
+          "weight": -1
+        },
+        "左足"
+      ]
+    },
+    "LeftShin": "左ひざ",
+    "LeftFoot": "左足首"
+  }
+}

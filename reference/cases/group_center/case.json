@@ -1,0 +1,12 @@
+{
+  "group": [
+    "a.vmd",
+    "b.vmd"
+  ],
+  "model": "model.bbmodel",
+  "mapping": "mapping.json",
+  "fps": 20,
+  "source_skeleton": "mmd-standard",
+  "formation": "center",
+  "sync_length": true
+}

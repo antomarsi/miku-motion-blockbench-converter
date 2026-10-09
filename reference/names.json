@@ -1,0 +1,77 @@
+[
+  {
+    "name": "センター",
+    "field_hex": "835a8393835e815b00000000000000",
+    "canonical": "センター"
+  },
+  {
+    "name": "左足ＩＫ",
+    "field_hex": "8db691ab8268826a00000000000000",
+    "canonical": "左足ＩＫ"
+  },
+  {
+    "name": "左つま先ＩＫ",
+    "field_hex": "8db682c282dc90e68268826a000000",
+    "canonical": "左つま先ＩＫ"
+  },
+  {
+    "name": "全ての親",
+    "field_hex": "915382c482cc906500000000000000",
+    "canonical": "全ての親"
+  },
+  {
+    "name": "上半身2",
+    "field_hex": "8fe394bc9067320000000000000000",
+    "canonical": "上半身2"
+  },
+  {
+    "name": "腰キャンセル左",
+    "field_hex": "8d98834c83838393835a838b8db600",
+    "canonical": "腰キャンセル左"
+  },
+  {
+    "name": "左腕捩",
+    "field_hex": "8db698729d80000000000000000000",
+    "canonical": "左腕捩"
+  },
+  {
+    "name": "ｳｨﾝｸ２右",
+    "field_hex": "b3a8ddb88251894500000000000000",
+    "canonical": "ｳｨﾝｸ２右"
+  },
+  {
+    "name": "あ２",
+    "field_hex": "82a082510000000000000000000000",
+    "canonical": "あ２"
+  },
+  {
+    "name": "∧",
+    "field_hex": "81c800000000000000000000000000",
+    "canonical": "∧"
+  },
+  {
+    "name": "abc XYZ 123",
+    "field_hex": "6162632058595a2031323300000000",
+    "canonical": "abc XYZ 123"
+  },
+  {
+    "name": "右ひじ",
+    "field_hex": "894582d082b6000000000000000000",
+    "canonical": "右ひじ"
+  },
+  {
+    "name": "これは十五バイトより長い名前です",
+    "field_hex": "82b182ea82cd8f5c8cdc836f834383",
+    "canonical": "これは十五バイ"
+  },
+  {
+    "name": "ab髪cdefghijklmn髪",
+    "field_hex": "616294af636465666768696a6b6c6d",
+    "canonical": "ab髪cdefghijklm"
+  },
+  {
+    "name": "",
+    "field_hex": "000000000000000000000000000000",
+    "canonical": ""
+  }
+]

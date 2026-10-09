@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "units": {
+    "translation_scale": 1.6
+  },
+  "ignore": [
+    "*指*"
+  ],
+  "bones": {
+    "Root": {
+      "from": [
+        "全ての親",
+        "センター",
+        "グルーブ"
+      ],
+      "translation": true
+    },
+    "Body": {
+      "from": [
+        "腰",
+        "上半身"
+      ]
+    },
+    "Chest": {
+      "from": [
+        "上半身1",
+        "上半身2"
+      ]
+    },
+    "Head": {
+      "from": [
+        "上半身1",
+        "上半身2",
+        "首",
+        "頭"
+      ]
+    },
+    "LeftArm": {
+      "from": [
+        "上半身1",
+        "上半身2",
+        "左肩",
+        "左腕"
+      ],
+      "rest_correction": {
+        "euler_deg": [
+          0,
+          0,
+          -53
+        ]
+      }
+    },
+    "LowerLeftArm": {
+      "from": [
+        "左腕捩",
+        "左ひじ"
+      ],
+      "rest_correction": {
+        "euler_deg": [
+          0,
+          0,
+          -53
+        ]
+      }
+    },
+    "RightArm": {
+      "from": [
+        "上半身1",
+        "上半身2",
+        "右肩",
+        "右腕"
+      ],
+      "rest_correction": {
+        "euler_deg": [
+          0,
+          0,
+          53
+        ]
+      }
+    },
+    "LeftLeg": {
+      "from": [
+        "腰",
+        "下半身",
+        {
+          "bone": "腰",
+          "weight": -1
+        },
+        "左足"
+      ]
+    },
+    "RightLeg": {
+      "from": [
+        "腰",
+        "下半身",
+        {
+          "bone": "腰",
+          "weight": -1
+        },
+        "右足"
+      ]
+    }
+  }
+}

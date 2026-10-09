@@ -1,0 +1,99 @@
+# Publishes the compiled plugin when a version tag is pushed:
+#
+#   npm version 0.3.0 --no-git-tag-version --workspaces --include-workspace-root
+#   git commit -am "Release 0.3.0" && git tag v0.3.0 && git push --follow-tags
+#
+# The tag must match the version in package.json (v0.3.0 <-> 0.3.0).
+#
+# Two things are published:
+# - a GitHub release with the plugin file and the command-line tool attached
+# - the plugin on GitHub Pages, at a fixed URL for Blockbench's "Load Plugin from URL":
+#     https://<owner>.github.io/<repository>/mmd_motion_importer.js
+#   (one-time setup: repository Settings > Pages > Source: "GitHub Actions")
+#
+# Running the workflow by hand ("Run workflow") publishes the chosen branch to Pages only,
+# without creating a release.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Check that the tag matches package.json
+        if: github.ref_type == 'tag'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Package the command-line tool
+        run: tar -czf miku-motion-cli.tgz -C packages/cli/dist miku-motion.mjs
+      - name: Assemble the Pages site
+        run: |
+          mkdir site
+          cp packages/plugin/dist/mmd_motion_importer.js site/
+          cp packages/plugin/site/index.html site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-files
+          if-no-files-found: error
+          path: |
+            packages/plugin/dist/mmd_motion_importer.js
+            miku-motion-cli.tgz
+
+  pages:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+  github-release:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-files
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            packages/plugin/dist/mmd_motion_importer.js
+            miku-motion-cli.tgz
