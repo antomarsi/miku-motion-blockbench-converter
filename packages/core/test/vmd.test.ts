@@ -13,6 +13,7 @@ import {
 import { parseVmd } from "../src/vmd/parser";
 import { conditionalNotes, isIkName, summarize, unsupportedNotes } from "../src/vmd/summary";
 import { emptyVmd, type VmdBoneKey, type VmdFile } from "../src/vmd/types";
+import { calibration } from "../src/vmd/synth";
 import { writeVmd } from "../src/vmd/writer";
 import { caseNames, expectClose, readCase, readReferenceJson } from "./reference";
 
@@ -238,5 +239,28 @@ describe("adapter", () => {
   it("falls back to names for IK bones when the file lists none", () => {
     const source = toSourceMotion(vmd(boneKey("左足ＩＫ", 0), boneKey("左足", 0)), new Diagnostics());
     expect([...source.ikBones]).toEqual(["左足ＩＫ"]);
+  });
+});
+
+describe("calibration motion", () => {
+  it("moves one axis at a time and returns to rest", () => {
+    const { vmd, steps } = calibration("head", "centre", 90, 2);
+    expect(steps.map((step) => [step.kind, step.axis, step.startFrame])).toEqual([
+      ["rotate", 0, 30],
+      ["rotate", 1, 90],
+      ["rotate", 2, 150],
+      ["move", 0, 210],
+      ["move", 1, 270],
+      ["move", 2, 330],
+    ]);
+    const parsed = parseVmd(writeVmd(vmd));
+    const head = parsed.boneKeys.filter((key) => key.name === "head");
+    expect(head.map((key) => key.frame)).toEqual([0, 30, 60, 90, 120, 150, 180]);
+    expectClose(head[3]!.rotation, [0, Math.SQRT1_2, 0, Math.SQRT1_2], 1e-6);
+    expectClose(head[4]!.rotation, [0, 0, 0, 1], 1e-6);
+    const centre = parsed.boneKeys.filter((key) => key.name === "centre");
+    expect(centre.map((key) => key.frame)).toEqual([180, 210, 240, 270, 300, 330, 360]);
+    expectClose(centre[5]!.position, [0, 0, 2], 1e-6);
+    expect(calibration("head", undefined).steps).toHaveLength(3);
   });
 });

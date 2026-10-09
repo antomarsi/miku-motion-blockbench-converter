@@ -15,6 +15,7 @@ const shared = {
   target: "es2022",
   legalComments: "none",
   define: { __VERSION__: JSON.stringify(version) },
+  loader: { ".bbmodel": "json" },
   logLevel: "info",
 };
 

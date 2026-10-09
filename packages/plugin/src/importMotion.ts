@@ -138,8 +138,8 @@ function sharedFields(): Record<string, object> {
       type: "file",
       label: "Custom mapping",
       description:
-        "Optional. A mapping .json for your own rig. Leave empty to use the built-in " +
-        "mapping of the template model.",
+        "Optional. A mapping .json for your own rig; it is then saved with the project. Leave " +
+        "empty to use the built-in mapping of the template model.",
       extensions: ["json"],
       filetype: "Bone mapping",
       readtype: "text",
@@ -233,8 +233,8 @@ function prepare(form: SharedForm, onReady: (prepared: Prepared) => void): void 
           chosen = customMapping(custom);
           rememberCustomMapping(custom);
         } else {
+          // An emptied field means "the built-in mapping, this time": the project keeps its own.
           chosen = defaultMapping(projectModel());
-          rememberCustomMapping(undefined);
         }
         const modelName = modelFile ? baseName(modelFile.name) : undefined;
         // Leaving `sourceRig` out means the built-in skeleton; `null` means no IK at all.
@@ -273,7 +273,7 @@ function runSoon(work: () => void): void {
 function presetMapping(dialog: Dialog): void {
   const remembered = rememberedCustomMapping();
   if (!remembered) return;
-  // Offer the custom mapping this project used last; the field's X clears it.
+  // Offer the project's own mapping; the field's X uses the built-in one for this import.
   try {
     dialog.setFormValues({
       mapping: { name: remembered.name, path: remembered.name, content: remembered.text },

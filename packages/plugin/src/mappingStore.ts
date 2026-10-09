@@ -4,8 +4,8 @@
  * Which bone mapping an import uses.
  *
  * Without a custom mapping, the mapping of the bundled template model is used (classic
- * or slim arms, chosen from the open model). A custom mapping file is remembered per
- * project, so the import dialog can offer it again.
+ * or slim arms, chosen from the open model). A project's own mapping is saved inside its
+ * .bbmodel, so the import dialog offers it again on any machine.
  */
 
 import {
@@ -51,17 +51,34 @@ export function customMapping(file: CustomMappingFile): ChosenMapping {
   return { mapping: parseMappingText(file.text, file.name), source: file.name };
 }
 
+/** The built-in template mapping that fits `model`, as an editable file. */
+export function defaultMappingFile(model: BlockbenchModel): CustomMappingFile {
+  const slim = defaultMapping(model).source.includes("slim");
+  return {
+    name: slim ? "template_slim.json" : "template.json",
+    text: `${JSON.stringify(slim ? templateSlimMapping : templateMapping, null, 2)}
+`,
+  };
+}
+
+// The project's mapping is saved inside the .bbmodel, through a project property.
+const PROPERTY = "mmd_motion_mapping";
+type MappedProject = ModelProject & { [PROPERTY]?: string };
+
+/** Make Blockbench save the mapping with the project. Delete the result on unload. */
+export function registerMappingProperty(): Deletable {
+  return new Property(ModelProject, "string", PROPERTY, { default: "", exposed: false });
+}
+
 const STORAGE_PREFIX = "mmd_motion_importer.mapping.";
 
 function storageKey(): string {
   return STORAGE_PREFIX + ((Project && Project.name) || "unnamed");
 }
 
-/** The custom mapping last used with the open project, if any. */
-export function rememberedCustomMapping(): CustomMappingFile | undefined {
+function readFile(saved: string | null | undefined): CustomMappingFile | undefined {
+  if (!saved) return undefined;
   try {
-    const saved = localStorage.getItem(storageKey());
-    if (!saved) return undefined;
     const file = JSON.parse(saved) as Partial<CustomMappingFile>;
     return typeof file.name === "string" && typeof file.text === "string"
       ? { name: file.name, text: file.text }
@@ -71,12 +88,30 @@ export function rememberedCustomMapping(): CustomMappingFile | undefined {
   }
 }
 
-/** Remember (or, with `undefined`, forget) the open project's custom mapping. */
-export function rememberCustomMapping(file: CustomMappingFile | undefined): void {
+/** The open project's own mapping, if it has one. */
+export function rememberedCustomMapping(): CustomMappingFile | undefined {
+  const stored = Project ? readFile((Project as MappedProject)[PROPERTY]) : undefined;
+  if (stored) return stored;
+  // Before mappings were saved in the project, they were kept in the browser by project name.
   try {
-    if (file) localStorage.setItem(storageKey(), JSON.stringify(file));
-    else localStorage.removeItem(storageKey());
+    return readFile(localStorage.getItem(storageKey()));
   } catch {
-    // Storage full or unavailable: only this import is affected.
+    return undefined;
+  }
+}
+
+/** Store (or, with `undefined`, remove) the open project's mapping. */
+export function rememberCustomMapping(file: CustomMappingFile | undefined): void {
+  if (!Project) return;
+  const project = Project as MappedProject;
+  const text = file ? JSON.stringify(file) : "";
+  if ((project[PROPERTY] ?? "") !== text) {
+    project[PROPERTY] = text;
+    project.saved = false; // the mapping is part of the .bbmodel
+  }
+  try {
+    localStorage.removeItem(storageKey());
+  } catch {
+    // Storage unavailable: nothing to clean up.
   }
 }

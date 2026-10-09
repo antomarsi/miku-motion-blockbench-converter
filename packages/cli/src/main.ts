@@ -1,5 +1,6 @@
 import { CORE_NAME, MikuMotionError } from "@miku-motion/core";
 
+import { synthCalibrationCommand } from "./commands/calibration";
 import { convertCommand, convertGroupCommand } from "./commands/convert";
 import { inspect } from "./commands/inspect";
 import { inspectModel } from "./commands/inspectModel";
@@ -21,6 +22,7 @@ Commands:
   prepare-model <model.bbmodel>  Fix a rig for dancing and add Blockbench IK (writes a copy)
   init-mapping <model.bbmodel>   Generate a starter mapping for a model
   apply-skin <skin.png>          Make the template model wear a Minecraft skin
+  synth-calibration              Write a test motion that moves one axis at a time
 
 Options:
   --version   Show the version
@@ -35,6 +37,7 @@ const COMMANDS: Record<string, (argv: string[]) => number> = {
   "prepare-model": prepareModelCommand,
   "init-mapping": initMappingCommand,
   "apply-skin": applySkinCommand,
+  "synth-calibration": synthCalibrationCommand,
 };
 
 function main(argv: string[]): number {

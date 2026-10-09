@@ -5,8 +5,12 @@
  * the conversion itself lives in @miku-motion/core.
  */
 
+import { checkRig, newDancer } from "./extras";
 import { importGroup, importMotion } from "./importMotion";
+import { editMapping } from "./mappingEditor";
+import { registerMappingProperty } from "./mappingStore";
 import { applyMinecraftSkin, generateMappingAction, prepareModel } from "./modelTools";
+import { createReportPanel } from "./report";
 
 declare const __VERSION__: string;
 
@@ -24,14 +28,19 @@ const ABOUT = [
   "Group and pick one .vmd per performer.",
   "",
   "For your own rig, Tools > MMD Motion Importer > Prepare Model for Dancing checks its bones and fixes what a",
-  "dance needs, and Generate Bone Mapping writes the mapping for you. Apply Minecraft",
-  "Skin dresses the template model in any Minecraft skin.",
+  "dance needs, Generate Bone Mapping writes the mapping for you, Edit Bone Mapping lets",
+  "you adjust it, and Check Rig shows that each bone turns the right way. The mapping is",
+  "saved inside the project file.",
+  "",
+  "New Minecraft Dancer starts a project from the built-in player model wearing your",
+  "skin; Apply Minecraft Skin changes the skin later.",
   "",
   "Legs follow the dance's IK targets, hair and clothes swing by simulation, and blinks",
   "and mouth shapes drive the face parts of the mapping.",
 ].join("\n");
 
 let actions: Action[] = [];
+let extras: Deletable[] = [];
 
 BBPlugin.register(PLUGIN_ID, {
   title: TITLE,
@@ -74,6 +83,24 @@ BBPlugin.register(PLUGIN_ID, {
       icon: "checkroom",
       click: applyMinecraftSkin,
     });
+    const editAction = new Action(`${PLUGIN_ID}_edit_mapping`, {
+      name: "Edit Bone Mapping",
+      description: "See and change which motion bones drive each bone, and what swings as hair",
+      icon: "tune",
+      click: editMapping,
+    });
+    const checkAction = new Action(`${PLUGIN_ID}_check`, {
+      name: "Check Rig",
+      description: "Add a test animation that moves one direction at a time",
+      icon: "fact_check",
+      click: checkRig,
+    });
+    const dancerAction = new Action(`${PLUGIN_ID}_new_dancer`, {
+      name: "New Minecraft Dancer",
+      description: "Start a project from the built-in dancing player model, wearing your skin",
+      icon: "person_add",
+      click: newDancer,
+    });
     const about = new Action(`${PLUGIN_ID}_about`, {
       name: `About ${TITLE}`,
       description: "Version and project page",
@@ -93,18 +120,33 @@ BBPlugin.register(PLUGIN_ID, {
       name: TITLE,
       description: "Get a model ready to dance",
       icon: "music_note",
-      children: [prepareAction, mappingAction, skinAction],
+      children: [dancerAction, skinAction, "_", prepareAction, mappingAction, editAction, checkAction],
       click() {},
     });
     MenuBar.addAction(toolsMenu, "tools");
+    MenuBar.addAction(dancerAction, "file.new");
     MenuBar.addAction(about, "help");
+    extras = [registerMappingProperty(), createReportPanel()];
     // The row of buttons at the top of the Animations panel, after its own import button.
     const animations = Toolbars.animations as Toolbar | undefined;
     if (animations && !animations.children.includes(importAction)) animations.add(importAction, 3);
-    actions = [importAction, groupAction, toolsMenu, prepareAction, mappingAction, skinAction, about];
+    actions = [
+      importAction,
+      groupAction,
+      toolsMenu,
+      prepareAction,
+      mappingAction,
+      editAction,
+      checkAction,
+      dancerAction,
+      skinAction,
+      about,
+    ];
   },
   onunload() {
     for (const action of actions) action.delete();
     actions = [];
+    for (const extra of extras) extra.delete();
+    extras = [];
   },
 });

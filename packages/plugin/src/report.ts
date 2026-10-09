@@ -12,6 +12,23 @@ export function escapeHtml(text: string): string {
   return text.replace(/[&<>"]/g, (character) => HTML_ESCAPES[character]!);
 }
 
+/** A listed name; the model's own bones can be clicked to select them. */
+function nameHtml(name: string): string {
+  if (!Group.all.some((group) => group.name === name)) return escapeHtml(name);
+  return `<a data-mmd-bone="${escapeHtml(name)}" title="Select this bone"
+    style="cursor: pointer; text-decoration: underline;">${escapeHtml(name)}</a>`;
+}
+
+/** Clicks on bone names inside a report select that bone. */
+function onReportClick(event: Event): void {
+  const target = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>("[data-mmd-bone]") : null;
+  const name = target?.dataset.mmdBone;
+  const group = name !== undefined ? Group.all.find((candidate) => candidate.name === name) : undefined;
+  if (!group) return;
+  group.select();
+  Blockbench.showQuickMessage(`Selected "${group.name}"`, 1500);
+}
+
 function noteHtml(note: FriendlyNote): string {
   const warning = note.severity === "warning";
   const names = note.names.length
@@ -20,7 +37,7 @@ function noteHtml(note: FriendlyNote): string {
            Show the ${note.names.length} ${escapeHtml(note.namesLabel)}
          </summary>
          <div style="user-select: text; padding: 4px 0 0 14px; color: var(--color-subtle_text);">
-           ${note.names.map(escapeHtml).join(", ")}
+           ${note.names.map(nameHtml).join(", ")}
          </div>
        </details>`
     : "";
@@ -88,25 +105,58 @@ export function withSharedPart(parts: readonly ReportPart[], heading: string): R
   ];
 }
 
+// --- the panel that keeps the last report at hand ---------------------------------------
+
+const EMPTY_PANEL = `<p style="color: var(--color-subtle_text);">Import an MMD motion to see its report here.</p>`;
+const panelState = { html: EMPTY_PANEL };
+
+/** A panel in Animate mode holding the last import's report. Delete the result on unload. */
+export function createReportPanel(): Deletable {
+  return new Panel("mmd_motion_importer_report", {
+    name: "MMD Import Report",
+    icon: "music_note",
+    condition: { modes: ["animate"] },
+    growable: true,
+    resizable: true,
+    default_side: "right",
+    default_position: { slot: "right_bar", float_position: [0, 0], float_size: [320, 420], height: 260, folded: true },
+    component: {
+      data: () => panelState,
+      methods: { click: onReportClick },
+      template: `<div style="overflow-y: auto; height: 100%; padding: 6px 8px;" v-html="html" @click="click"></div>`,
+    },
+  } as unknown as ConstructorParameters<typeof Panel>[1]);
+}
+
+function headerHtml(report: Report): string {
+  return `<p style="margin: 0; font-size: 1.1em;"><b>${escapeHtml(report.headline)}</b></p>
+          <p style="margin: 2px 0 0; color: var(--color-subtle_text); user-select: text;">
+            ${escapeHtml(report.details)}
+          </p>`;
+}
+
 export function showReport(report: Report): void {
   const body = report.parts.map(partHtml).join("");
+  panelState.html = headerHtml(report) + (body || `<p>Nothing to report.</p>`);
   if (!body) {
     Blockbench.showQuickMessage(report.headline, 3000);
     return;
   }
-  new Dialog({
+  const dialog = new Dialog({
     id: "mmd_motion_importer_report",
     title: "MMD motion imported",
     width: 660,
     lines: [
       `<div style="max-height: 60vh; overflow-y: auto; padding-right: 6px;">
-         <p style="margin: 0; font-size: 1.1em;"><b>${escapeHtml(report.headline)}</b></p>
-         <p style="margin: 2px 0 0; color: var(--color-subtle_text); user-select: text;">
-           ${escapeHtml(report.details)}
-         </p>
+         ${headerHtml(report)}
          ${body}
+         <p style="margin: 12px 0 0; color: var(--color-subtle_text);">
+           This report stays in the "MMD Import Report" panel of the Animate tab.
+         </p>
        </div>`,
     ],
     singleButton: true,
-  }).show();
+  });
+  dialog.show();
+  dialog.object?.addEventListener("click", onReportClick);
 }

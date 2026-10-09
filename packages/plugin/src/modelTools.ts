@@ -244,7 +244,7 @@ export function generateMappingAction(): void {
 
 // --- Apply Minecraft skin ---------------------------------------------------------------
 
-function loadImage(source: string): Promise<HTMLImageElement> {
+export function loadImage(source: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
@@ -253,7 +253,7 @@ function loadImage(source: string): Promise<HTMLImageElement> {
   });
 }
 
-function pixelsOf(source: CanvasImageSource, width: number, height: number): Pixels {
+export function pixelsOf(source: CanvasImageSource, width: number, height: number): Pixels {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;

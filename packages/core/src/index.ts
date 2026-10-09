@@ -24,6 +24,7 @@ export { toSourceMotion } from "./vmd/adapter";
 export { parseVmd } from "./vmd/parser";
 export * from "./vmd/summary";
 export * from "./vmd/types";
+export * from "./vmd/synth";
 export { writeVmd } from "./vmd/writer";
 
 export * from "./pmx/parser";
