@@ -1,13 +1,13 @@
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
 
-import type { MappingFile } from "@miku-motion/core";
+import { suggestChains, type MappingFile } from "@miku-motion/core";
 
 import { compact, readMapping, readModel, UsageError } from "../io";
 
 export const INSPECT_MODEL_HELP = `Usage: miku-motion inspect-model <model.bbmodel> [-m mapping.json]
 
-Show a Blockbench model's bones: hierarchy, pivots and rest rotations.
+Show a Blockbench model's bones and suggest hair/cloth chains for secondary motion.
 
 Options:
   -m, --mapping <file>   Mark the bones this mapping already uses
@@ -35,7 +35,8 @@ export function inspectModel(argv: string[]): number {
   if (path === undefined || rest.length) throw new UsageError(INSPECT_MODEL_HELP);
 
   const model = readModel(path);
-  const used = usedBones(values.mapping ? readMapping(values.mapping) : undefined);
+  const mapping = values.mapping ? readMapping(values.mapping) : undefined;
+  const used = usedBones(mapping);
   const { skeleton } = model;
   console.log(
     `${basename(path)}  (Blockbench ${model.formatVersion}, ${model.modelFormat}, ` +
@@ -50,5 +51,19 @@ export function inspectModel(argv: string[]): number {
     const tags = (bone.extent ? "" : "  (no cubes)") + (used.has(bone.name) ? "  [mapped]" : "");
     console.log(`  ${"  ".repeat(depth)}${bone.name}  pivot ${pivot}${rest}${tags}`);
   }
+
+  const suggestions = suggestChains(skeleton, mapping);
+  if (!suggestions.length) {
+    console.log("\nNo unconfigured hair/cloth-like chains found.");
+    return 0;
+  }
+  console.log(
+    "\nPossible secondary_motion chains (review, then paste into the mapping; " +
+      "presets: long_hair, ponytail, short_hair, cloth, accessory):",
+  );
+  const lines = suggestions.map(
+    (s) => `    { "bones": ${JSON.stringify(s.bones).replace(/,/g, ", ")}, "preset": "${s.preset}" }`,
+  );
+  console.log(`  "secondary_motion": [\n${lines.join(",\n")}\n  ]`);
   return 0;
 }

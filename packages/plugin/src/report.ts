@@ -2,9 +2,9 @@
 
 /** The window shown after an import: what was imported and what to know about it. */
 
-import type { ConversionResult } from "@miku-motion/core";
+import type { Diagnostic } from "@miku-motion/core";
 
-import { friendly, friendlyDuration, type FriendlyNote } from "./friendly";
+import { friendly, type FriendlyNote } from "./friendly";
 
 const HTML_ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
 
@@ -42,33 +42,69 @@ function noteHtml(note: FriendlyNote): string {
     </div>`;
 }
 
-function section(title: string, notes: FriendlyNote[]): string {
+function section(title: string, notes: readonly FriendlyNote[]): string {
   if (!notes.length) return "";
   return `<h3 style="margin: 14px 0 4px;">${escapeHtml(title)}</h3>${notes.map(noteHtml).join("")}`;
 }
 
-export function showReport(result: ConversionResult, fileName: string, mapping: string, replaced: boolean): void {
-  const { animation, diagnostics } = result;
-  const headline =
-    `${replaced ? "Updated" : "Imported"} "${fileName}": ` +
-    `${friendlyDuration(animation.length)}, ${animation.tracks.size} bones animated`;
-  if (!diagnostics.items.length) {
-    Blockbench.showQuickMessage(headline, 3000);
+/** One part of the report: e.g. one performer, or what applies to all of them. */
+export interface ReportPart {
+  /** Shown above the part's notes; omitted for a single import. */
+  readonly heading?: string;
+  readonly diagnostics: readonly Diagnostic[];
+}
+
+export interface Report {
+  /** What was imported, in one line. */
+  readonly headline: string;
+  /** Details under the headline (animation name, mapping...). */
+  readonly details: string;
+  readonly parts: readonly ReportPart[];
+}
+
+function partHtml(part: ReportPart): string {
+  const notes = part.diagnostics.map(friendly);
+  const warnings = notes.filter((n) => n.severity === "warning");
+  const infos = notes.filter((n) => n.severity === "info");
+  if (!notes.length) return "";
+  const heading = part.heading
+    ? `<h2 style="margin: 18px 0 0; font-size: 1.15em;">${escapeHtml(part.heading)}</h2>`
+    : "";
+  return heading + section("Worth a look", warnings) + section("Good to know", infos);
+}
+
+/** Notes that every part has (same code and text) are shown once, under `heading`. */
+export function withSharedPart(parts: readonly ReportPart[], heading: string): ReportPart[] {
+  if (parts.length < 2) return [...parts];
+  const key = (d: Diagnostic): string => `${d.code}\n${d.message}`;
+  const everywhere = parts[0]!.diagnostics.filter((d) =>
+    parts.every((part) => part.diagnostics.some((other) => key(other) === key(d))),
+  );
+  if (!everywhere.length) return [...parts];
+  const shared = new Set(everywhere.map(key));
+  return [
+    { heading, diagnostics: everywhere },
+    ...parts.map((part) => ({ ...part, diagnostics: part.diagnostics.filter((d) => !shared.has(key(d))) })),
+  ];
+}
+
+export function showReport(report: Report): void {
+  const body = report.parts.map(partHtml).join("");
+  if (!body) {
+    Blockbench.showQuickMessage(report.headline, 3000);
     return;
   }
-  const notes = diagnostics.items.map(friendly);
   new Dialog({
     id: "mmd_motion_importer_report",
     title: "MMD motion imported",
-    width: 640,
+    width: 660,
     lines: [
       `<div style="max-height: 60vh; overflow-y: auto; padding-right: 6px;">
-         <p style="margin: 0; font-size: 1.1em;"><b>${escapeHtml(headline)}</b></p>
+         <p style="margin: 0; font-size: 1.1em;"><b>${escapeHtml(report.headline)}</b></p>
          <p style="margin: 2px 0 0; color: var(--color-subtle_text); user-select: text;">
-           Animation: ${escapeHtml(animation.name)} &middot; Mapping: ${escapeHtml(mapping)}
+           ${escapeHtml(report.details)}
          </p>
-         ${section("Worth a look", notes.filter((n) => n.severity === "warning"))}
-         ${section("Good to know", notes.filter((n) => n.severity === "info"))}
+         ${body}
        </div>`,
     ],
     singleButton: true,

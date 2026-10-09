@@ -83,6 +83,8 @@ export interface Stages {
     >;
   };
   diagnostics: { code: string; severity: string; message: string; bones: string[] }[];
+  ik: { bone: string; links: string[]; enabled_fraction: number; residuals: number[] }[];
+  solved: Record<string, number[][]>;
 }
 
 /** Names of the single-motion conversion cases (group cases are listed separately). */

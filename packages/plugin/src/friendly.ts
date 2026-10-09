@@ -27,16 +27,32 @@ function count(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/** The first capture of `pattern` in a technical message, or a fallback. */
+function found(message: string, pattern: RegExp, fallback = "?"): string {
+  return pattern.exec(message)?.[1] ?? fallback;
+}
+
 type Writer = (d: Diagnostic) => { title: string; text: string; namesLabel?: string };
 
 const WRITERS: Partial<Record<Code, Writer>> = {
-  [Code.UNSUPPORTED_MORPHS]: (d) => ({
-    title: "Facial expressions are not imported yet",
-    text:
-      `This motion has ${count(d.bones.length, "facial expression", "facial expressions")} ` +
-      "(blinks, mouth shapes). This version can't convert them yet, so the face stays still.",
-    namesLabel: "expressions",
-  }),
+  [Code.UNSUPPORTED_MORPHS]: (d) =>
+    d.message.includes("no morph rules")
+      ? {
+          title: "Facial expressions were left out",
+          text:
+            `This motion has ${count(d.bones.length, "facial expression", "facial expressions")} ` +
+            "(blinks, mouth shapes), but the mapping has no rules for the face, so it stays " +
+            "still. The template's built-in mapping has them; a custom mapping needs a " +
+            '"morphs" section.',
+          namesLabel: "expressions",
+        }
+      : {
+          title: `${count(d.bones.length, "facial expression", "facial expressions")} had nowhere to go`,
+          text:
+            "The face is animated, but the mapping has no rule for these expressions (often " +
+            "eyebrows or special faces your model has no parts for), so they are left out.",
+          namesLabel: "expressions",
+        },
   [Code.UNSUPPORTED_CAMERA]: () => ({
     title: "Camera movement is not imported",
     text: "The file also contains camera keyframes. Only the character's motion is converted.",
@@ -63,10 +79,11 @@ const WRITERS: Partial<Record<Code, Writer>> = {
       "skip; for anything bigger, add it to a custom mapping.",
   }),
   [Code.IK_DRIVEN_BONES]: () => ({
-    title: "Legs are not fully imported yet",
+    title: "Some foot or hand targets could not be followed",
     text:
-      "This dance places the feet with IK targets. This version can't solve them yet, so " +
-      "the knees may stay straight and the feet may slide.",
+      "The dance moves these parts with IK targets that the source skeleton doesn't know " +
+      "(or IK solving is switched off), so the limbs only follow their own keyframes: " +
+      "knees may stay straight and feet may slide.",
     namesLabel: "IK targets",
   }),
   [Code.TRANSLATION_DROPPED]: (d) => ({
@@ -85,6 +102,25 @@ const WRITERS: Partial<Record<Code, Writer>> = {
       "A bone of the dance is listed both for a bone of your model and for one of its " +
       "parents, so it rotates double. Remove it from the child's entry in the mapping.",
     namesLabel: "entries",
+  }),
+  [Code.IK_UNREACHED]: (d) => ({
+    title: "A foot doesn't always reach where the dance puts it",
+    text:
+      `In about ${found(d.message, /in (\d+%) of samples/)} of the dance, this leg can't ` +
+      "reach its target, so the foot may float or slide a little. The dance was made for a " +
+      "model with different leg proportions; choosing that model's .pmx as the source " +
+      "model fixes it.",
+    namesLabel: "IK target",
+  }),
+  [Code.IK_SOLVED]: () => ({
+    title: "Legs follow the dance's foot targets",
+    text: "Knee bends were worked out from where the dance places the feet, as MMD does.",
+    namesLabel: "IK targets",
+  }),
+  [Code.FACIAL_ANIMATION]: () => ({
+    title: "The face is animated",
+    text: "Blinks and mouth shapes from the dance drive these parts of your model.",
+    namesLabel: "face parts",
   }),
   [Code.UNMAPPED_TARGET_BONES]: (d) => ({
     title: `${count(d.bones.length, "bone of your model is", "bones of your model are")} not animated`,
@@ -105,11 +141,58 @@ const WRITERS: Partial<Record<Code, Writer>> = {
       "File > Convert Project > GeckoLib Animated Model.",
   }),
   [Code.SECONDARY_MOTION]: () => ({
-    title: "Hair and clothes don't move yet",
+    title: "Hair and clothes swing with the dance",
     text:
-      "Swinging hair, skirts and ties are simulated by the converter, and this version " +
-      "can't do that yet. These parts stay still.",
-    namesLabel: "bones",
+      "MMD moves these with physics, which a motion file doesn't store, so their swing " +
+      "was simulated from the body's movement.",
+  }),
+  [Code.SECONDARY_CANDIDATES]: (d) => ({
+    title: "Some hair or cloth parts could swing but are not set up",
+    text:
+      `${found(d.message, /^(\d+) bone chains/)} parts of your model look like hair or cloth ` +
+      "but the mapping doesn't list them, so they stay stiff. Add them to the " +
+      '"secondary_motion" section of a custom mapping to make them swing.',
+  }),
+  [Code.KEYS_REDUCED]: (d) => ({
+    title: `Keyframes reduced by ${found(d.message, /\(-(\d+%)\)/)}`,
+    text:
+      `Only the keyframes needed to follow the dance were kept: ` +
+      `${found(d.message, /to ([\d,]+) \(/)} of ${found(d.message, /from ([\d,]+) to/)}. ` +
+      "The file is smaller and the motion between keys is more accurate.",
+  }),
+  [Code.REDUCTION_OVER_TOLERANCE]: (d) => ({
+    title: "A few very fast moves are slightly off",
+    text:
+      `In some quick spins the result differs from the dance by up to ` +
+      `${found(d.message, /up to ([\d.]+) deg/)} degrees for a moment. If you notice a ` +
+      "glitch, import again with more samples per second.",
+  }),
+  [Code.GROUP_DURATION_MISMATCH]: (d) => ({
+    title: "This performer's motion has a different length",
+    text:
+      `${found(d.message, /^(.+?) converts to/)} is ` +
+      `${found(d.message, /, ([\d.]+)s away/)} s away from the group's average length. ` +
+      'Tick "Same length for all" so everyone ends together.',
+  }),
+  [Code.GROUP_FORMATION]: (d) => ({
+    title: d.message.includes("own origin")
+      ? "Every performer starts at the model's origin"
+      : "The group was centred on the origin",
+    text:
+      "The stage positions stored in the motions were adjusted as you chose. Heights are " +
+      "unchanged.",
+  }),
+  [Code.GROUP_LENGTH_SYNCED]: (d) => ({
+    title: "All animations have the same length",
+    text:
+      `Every animation now lasts ${found(d.message, /is now ([\d.]+)s long/)} s, so the ` +
+      "performers can start and end together. Shorter motions hold their last pose.",
+  }),
+  [Code.GROUP_MEMBER_SKIPPED]: (d) => ({
+    title: "A file without a performer was skipped",
+    text:
+      `${found(d.message, /^skipped (.+?):/)} has no body or face motion (it is probably ` +
+      "the camera), so no animation was made for it.",
   }),
 };
 

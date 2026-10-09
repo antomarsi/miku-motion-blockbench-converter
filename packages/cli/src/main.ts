@@ -1,6 +1,6 @@
 import { CORE_NAME, MikuMotionError } from "@miku-motion/core";
 
-import { convertCommand } from "./commands/convert";
+import { convertCommand, convertGroupCommand } from "./commands/convert";
 import { inspect } from "./commands/inspect";
 import { inspectModel } from "./commands/inspectModel";
 import { UsageError } from "./io";
@@ -15,7 +15,8 @@ Usage: miku-motion <command> [options]
 Commands:
   inspect <motion.vmd>           Show what a motion contains
   inspect-model <model.bbmodel>  Show a model's bones
-  convert <motion.vmd>           Convert a motion for a model (body motion only so far)
+  convert <motion.vmd>           Convert a motion for a model
+  convert-group <motions...>     Convert several performers' motions for one model
 
 More commands are being ported from the Python version (branch "python").
 
@@ -28,6 +29,7 @@ const COMMANDS: Record<string, (argv: string[]) => number> = {
   inspect,
   "inspect-model": inspectModel,
   convert: convertCommand,
+  "convert-group": convertGroupCommand,
 };
 
 function main(argv: string[]): number {

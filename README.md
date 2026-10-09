@@ -6,9 +6,9 @@ Convert MikuMikuDance motion files (`.vmd`) into GeckoLib-compatible `.animation
 dance.vmd + model.bbmodel + mapping.json  →  miku-motion convert  →  dance.animation.json
 ```
 
-> **Status:** this branch is being ported from a Python command-line tool to a **Blockbench plugin** (TypeScript) with a Node CLI. The port is in progress: it converts body motion, but not yet leg IK, simulated hair or facial animation.
+> **Status:** this branch is being ported from a Python command-line tool to a **Blockbench plugin** (TypeScript) with a Node CLI. The port is in progress: conversion is complete (body, leg IK, simulated hair, face, performer groups) and matches the Python version; the model tools (prepare-model, init-mapping, apply-skin) are not ported yet.
 >
-> - **For complete conversions today**, use the Python version on the [`python` branch](../../tree/python). Everything below this notice describes that version.
+> - **For the model tools**, use the Python version on the [`python` branch](../../tree/python). Everything below this notice describes that version.
 > - **To try the plugin:** `npm install`, then `npm run build`. Load `packages/plugin/dist/mmd_motion_importer.js` in Blockbench with File > Plugins > Load Plugin from File, then use File > Import > Import MMD Motion (.vmd).
 > - **Development checks:** `npm run check` (lint, type check, tests, build).
 >

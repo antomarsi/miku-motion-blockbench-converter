@@ -5,7 +5,7 @@
  * the conversion itself lives in @miku-motion/core.
  */
 
-import { importMotion } from "./importMotion";
+import { importGroup, importMotion } from "./importMotion";
 
 declare const __VERSION__: string;
 
@@ -18,10 +18,12 @@ const ABOUT = [
   "model through a bone mapping. The bundled template model works out of the box; for",
   "your own rig, pick a custom mapping .json in the import dialog.",
   "",
-  "Use File > Import > Import MMD Motion (.vmd).",
+  "Use File > Import > Import MMD Motion (.vmd), or the music-note button in the",
+  "Animations panel. For a dance with several performers, use Import MMD Performer",
+  "Group and pick one .vmd per performer.",
   "",
-  "This version converts body motion. Leg IK, simulated hair and facial animation are",
-  "still being ported from the command-line version.",
+  "Legs follow the dance's IK targets, hair and clothes swing by simulation, and blinks",
+  "and mouth shapes drive the face parts of the mapping.",
 ].join("\n");
 
 let actions: Action[] = [];
@@ -43,6 +45,12 @@ BBPlugin.register(PLUGIN_ID, {
       icon: "music_note",
       click: importMotion,
     });
+    const groupAction = new Action(`${PLUGIN_ID}_import_group`, {
+      name: "Import MMD Performer Group (.vmd)",
+      description: "Convert several performers' motions of one dance, one animation each",
+      icon: "groups",
+      click: importGroup,
+    });
     const about = new Action(`${PLUGIN_ID}_about`, {
       name: `About ${TITLE}`,
       description: "Version and project page",
@@ -55,12 +63,14 @@ BBPlugin.register(PLUGIN_ID, {
       },
     });
     MenuBar.addAction(importAction, "file.import");
+    MenuBar.addAction(groupAction, "file.import");
     MenuBar.addAction(importAction, "animation");
+    MenuBar.addAction(groupAction, "animation");
     MenuBar.addAction(about, "help");
     // The row of buttons at the top of the Animations panel, after its own import button.
     const animations = Toolbars.animations as Toolbar | undefined;
     if (animations && !animations.children.includes(importAction)) animations.add(importAction, 3);
-    actions = [importAction, about];
+    actions = [importAction, groupAction, about];
   },
   onunload() {
     for (const action of actions) action.delete();

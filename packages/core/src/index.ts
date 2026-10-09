@@ -39,3 +39,12 @@ export * from "./mapping/resolve";
 export * from "./mapping/schema";
 export * from "./pipeline";
 export * as text from "./text";
+
+export * from "./conversion/morphs";
+export * from "./conversion/secondary";
+export * from "./geckolib/optimize";
+export * from "./mapping/secondary";
+export * from "./pmx/adapter";
+export * from "./rig/ik";
+export * from "./rig/model";
+export * from "./rig/schema";

@@ -7,13 +7,15 @@
  * every keyframe sits on its own line (readable diffs without a huge file).
  *
  * Channels that never change are written as a single keyframe; channels that stay at
- * the rest pose are omitted.
+ * the rest pose are omitted. With a tolerance, channels are reduced to the keyframes
+ * GeckoLib needs to stay within it (`optimize.ts`).
  */
 
 import { LoopMode, type Animation } from "../animation/clip";
 import type { Skeleton } from "../animation/skeleton";
 import type { Vec3Array } from "../geometry/quat";
 import { positionChannel, rotationChannel } from "./encoding";
+import { reducePosition, reduceRotation, type Tolerance } from "./optimize";
 
 export const FORMAT_VERSION = "1.8.0";
 export const GECKOLIB_FORMAT_VERSION = 2;
@@ -89,10 +91,11 @@ export function channel(times: Float64Array, values: Vec3Array, rest = 0): Chann
   return out;
 }
 
-/** The GeckoLib document for `animation` on `skeleton`. */
+/** The GeckoLib document; with a `tolerance`, channels are reduced (see `optimize.ts`). */
 export function buildDocument(
   animation: Animation,
   skeleton: Skeleton,
+  tolerance?: Tolerance,
 ): { document: { [key: string]: DocumentNode }; stats: WriteStats } {
   const { times } = animation;
   const stats: WriteStats = { denseKeys: 0, keys: 0, maxRotationError: 0, maxPositionError: 0 };
@@ -107,21 +110,46 @@ export function buildDocument(
     if (!track) continue;
     const channels: { [key: string]: DocumentNode } = {};
     if (track.rotations) {
-      const rotation = channel(times, rotationChannel(bone, track.rotations));
+      let keyTimes = times;
+      let values: Vec3Array;
+      if (tolerance) {
+        const reduced = reduceRotation(bone, times, track.rotations, tolerance.rotationDegrees);
+        keyTimes = reduced.times;
+        values = reduced.values;
+        stats.maxRotationError = Math.max(stats.maxRotationError, reduced.maxError);
+      } else {
+        values = rotationChannel(bone, track.rotations);
+      }
+      const rotation = channel(keyTimes, values);
       if (rotation) {
         channels.rotation = rotation;
         count(rotation);
       }
     }
     if (track.translations) {
-      const position = channel(times, positionChannel(track.translations));
+      let keyTimes = times;
+      let values = positionChannel(track.translations);
+      if (tolerance) {
+        const reduced = reducePosition(times, values, tolerance.position);
+        keyTimes = reduced.times;
+        values = reduced.values;
+        stats.maxPositionError = Math.max(stats.maxPositionError, reduced.maxError);
+      }
+      const position = channel(keyTimes, values);
       if (position) {
         channels.position = position;
         count(position);
       }
     }
     if (track.scales) {
-      const scale = channel(times, track.scales, 1);
+      let keyTimes = times;
+      let values = track.scales;
+      if (tolerance) {
+        const reduced = reducePosition(times, values, tolerance.scale);
+        keyTimes = reduced.times;
+        values = reduced.values;
+      }
+      const scale = channel(keyTimes, values, 1);
       if (scale) {
         channels.scale = scale;
         count(scale);
@@ -176,8 +204,9 @@ export function renderDocument(document: DocumentNode): string {
 export function renderAnimation(
   animation: Animation,
   skeleton: Skeleton,
+  tolerance?: Tolerance,
 ): { text: string; stats: WriteStats } {
-  const { document, stats } = buildDocument(animation, skeleton);
+  const { document, stats } = buildDocument(animation, skeleton, tolerance);
   return { text: renderDocument(document), stats };
 }
 
