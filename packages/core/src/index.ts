@@ -27,3 +27,15 @@ export * from "./vmd/types";
 export { writeVmd } from "./vmd/writer";
 
 export * from "./pmx/parser";
+
+export * from "./animation/clip";
+export * from "./animation/skeleton";
+export * from "./blockbench/bbmodel";
+export * from "./conversion/coordinates";
+export { retarget } from "./conversion/retarget";
+export * as geckolibEncoding from "./geckolib/encoding";
+export * from "./geckolib/writer";
+export * from "./mapping/resolve";
+export * from "./mapping/schema";
+export * from "./pipeline";
+export * as text from "./text";

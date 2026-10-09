@@ -15,7 +15,8 @@ import {
 import { Code, type Diagnostics } from "../diagnostics";
 import { decode } from "./interpolation";
 import { canonicalBoneName } from "./names";
-import { FRAME_RATE, compareNames, isIkName } from "./summary";
+import { compareNames } from "../text";
+import { FRAME_RATE, isIkName } from "./summary";
 import type { VmdBoneKey, VmdFile } from "./types";
 
 const CURVE_SCALE = 127;

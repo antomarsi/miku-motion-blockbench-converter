@@ -1,5 +1,6 @@
 /** Metadata about a VMD file, for the `inspect` command. */
 
+import { compareNames } from "../text";
 import type { VmdBoneKey, VmdFile } from "./types";
 
 export const FRAME_RATE = 30;
@@ -96,10 +97,6 @@ function boneSummary(name: string, keys: VmdBoneKey[], ikNames: Set<string>): Bo
     ),
     ik: ikNames.has(name) || isIkName(name),
   };
-}
-
-export function compareNames(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
 }
 
 export function summarize(vmd: VmdFile): VmdSummary {

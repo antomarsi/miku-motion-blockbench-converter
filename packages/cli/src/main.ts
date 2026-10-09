@@ -1,6 +1,8 @@
 import { CORE_NAME, MikuMotionError } from "@miku-motion/core";
 
+import { convertCommand } from "./commands/convert";
 import { inspect } from "./commands/inspect";
+import { inspectModel } from "./commands/inspectModel";
 import { UsageError } from "./io";
 
 const VERSION = typeof __VERSION__ === "string" ? __VERSION__ : "dev";
@@ -11,7 +13,9 @@ Convert MikuMikuDance motion (.vmd) into Blockbench / GeckoLib animation JSON.
 Usage: miku-motion <command> [options]
 
 Commands:
-  inspect <motion.vmd>   Show what a motion contains
+  inspect <motion.vmd>           Show what a motion contains
+  inspect-model <model.bbmodel>  Show a model's bones
+  convert <motion.vmd>           Convert a motion for a model (body motion only so far)
 
 More commands are being ported from the Python version (branch "python").
 
@@ -20,7 +24,11 @@ Options:
   --help      Show this help (also after a command)
 `;
 
-const COMMANDS: Record<string, (argv: string[]) => number> = { inspect };
+const COMMANDS: Record<string, (argv: string[]) => number> = {
+  inspect,
+  "inspect-model": inspectModel,
+  convert: convertCommand,
+};
 
 function main(argv: string[]): number {
   const [command, ...rest] = argv;

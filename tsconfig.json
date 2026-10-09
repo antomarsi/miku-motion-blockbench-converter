@@ -26,6 +26,8 @@
     "packages/core/test",
     "packages/cli/src",
     "scripts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "packages/plugin/test",
+    "packages/plugin/src/friendly.ts"
   ]
 }

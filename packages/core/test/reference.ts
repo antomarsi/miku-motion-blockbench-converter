@@ -58,6 +58,31 @@ export interface Stages {
   frames: number[];
   sampled: Record<string, PoseStage>;
   morphs: Record<string, number[]>;
+  skeleton: {
+    name: string;
+    parent: string | null;
+    pivot: number[];
+    rest_rotation: number[];
+    extent: number[][] | null;
+  }[];
+  bindings: {
+    target: string;
+    anchor: string | null;
+    translation: boolean;
+    rest_correction: number[];
+    chain: [string, number][];
+  }[];
+  translation_scale: number;
+  animation: {
+    name: string;
+    length: number;
+    loop: string;
+    tracks: Record<
+      string,
+      { rotations: number[][] | null; translations: number[][] | null; scales: number[][] | null }
+    >;
+  };
+  diagnostics: { code: string; severity: string; message: string; bones: string[] }[];
 }
 
 /** Names of the single-motion conversion cases (group cases are listed separately). */
@@ -65,6 +90,17 @@ export function caseNames(): string[] {
   return readdirSync(resolve(REFERENCE_DIR, "cases"))
     .filter((name) => existsSync(resolve(REFERENCE_DIR, "cases", name, "motion.vmd")))
     .sort();
+}
+
+/** A case file: `@path` is relative to the repository, anything else to the case folder. */
+export function caseFile(name: string, reference: string): string {
+  return reference.startsWith("@")
+    ? resolve(REPO_ROOT, reference.slice(1))
+    : resolve(REFERENCE_DIR, "cases", name, reference);
+}
+
+export function readCaseText(name: string, reference: string): string {
+  return readFileSync(caseFile(name, reference), "utf8");
 }
 
 export function readCase(name: string): { spec: CaseSpec; stages: Stages; motion: Uint8Array } {
